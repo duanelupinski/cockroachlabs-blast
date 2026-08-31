@@ -66,6 +66,7 @@ function buildReplicas(nodes: NodeInfo[], ranges: RangeInfo[]): ReplicaInfo[] {
       nodeIndex: m.nodeIndex,
       isVoting: s.voting > 0,
       isLeaseholder: s.leaseholder > 0,
+      votingCount: s.voting,
     });
   }
   return replicas;
@@ -82,6 +83,7 @@ export function PresenterView() {
   const [consoleKey, setConsoleKey] = useState(0);
   const [focused, setFocused] = useState<RegionId | null>(null);
   const [showGhost, setShowGhost] = useState(true);
+  const [globePaused, setGlobePaused] = useState(false);
 
   useEffect(() => {
     const cleanup = onMessage((event) => {
@@ -144,7 +146,6 @@ export function PresenterView() {
   return (
     <div className="h-screen w-screen flex flex-col bg-[#0a0e14] text-gray-200">
       <header className="h-10 flex items-center gap-2 px-3 border-b border-white/10">
-        <span className="text-xs font-semibold tracking-wide text-emerald-400">CRDB BLAST</span>
         <button
           className={`text-xs px-2 py-1 rounded ${tab === 'globe' ? 'bg-white/10' : 'text-white/50'}`}
           onClick={() => setTab('globe')}
@@ -157,6 +158,14 @@ export function PresenterView() {
         >
           DB Console
         </button>
+        {tab === 'globe' && (
+          <button
+            className="text-xs px-2 py-1 rounded bg-white/10 hover:bg-white/20"
+            onClick={() => setGlobePaused((p) => !p)}
+          >
+            {globePaused ? 'Resume globe' : 'Pause globe'}
+          </button>
+        )}
         <span className="ml-auto text-[10px] font-mono text-white/40">
           {connected ? 'connected' : 'waiting for cluster'}
           {topology?.focusTable ? ` · ${topology.focusTable}` : ''}
@@ -167,7 +176,7 @@ export function PresenterView() {
         <div className="flex-1 flex min-h-0">
           <div className="flex-1 relative min-w-0">
             <GlobeScene
-              autoRotate={!focused}
+              autoRotate={!focused && !globePaused}
               focusLat={focused ? REGIONS.find((r) => r.id === focused)?.lat : null}
               focusLng={focused ? REGIONS.find((r) => r.id === focused)?.lng : null}
               onFocusComplete={() => setFocused(null)}

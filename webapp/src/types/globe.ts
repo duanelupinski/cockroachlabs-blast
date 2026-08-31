@@ -15,6 +15,7 @@ export interface ReplicaInfo {
   nodeIndex: number;
   isVoting: boolean;
   isLeaseholder: boolean;
+  votingCount: number;
 }
 
 export interface NodeInfo {

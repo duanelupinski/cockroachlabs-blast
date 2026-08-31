@@ -32,11 +32,12 @@ export function NodeDot({
   const isLeaseholder = replicas.some((r) => r.isLeaseholder);
   const isVoting = replicas.some((r) => r.isVoting);
   const isNonVoting = replicas.length > 0 && !isVoting;
+  const votingCount = replicas.reduce((n, r) => n + (r.votingCount ?? (r.isVoting ? 1 : 0)), 0);
 
   const badge = isLeaseholder
-    ? { text: 'LH', color: '#FFD700', bg: 'rgba(255, 215, 0, 0.15)' }
+    ? { text: votingCount > 0 ? `LH ${votingCount}V` : 'LH', color: '#FFD700', bg: 'rgba(255, 215, 0, 0.15)' }
     : isVoting
-      ? { text: 'V', color, bg: 'rgba(255, 255, 255, 0.1)' }
+      ? { text: `${votingCount}V`, color, bg: 'rgba(255, 255, 255, 0.1)' }
       : isNonVoting
         ? { text: 'NV', color: '#9CA3AF', bg: 'rgba(255, 255, 255, 0.05)' }
         : null;

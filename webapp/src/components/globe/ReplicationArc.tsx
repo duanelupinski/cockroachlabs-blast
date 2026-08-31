@@ -58,7 +58,7 @@ function RebalancingPulse({
   const meshRef = useRef<THREE.Mesh>(null);
 
   useFrame(({ clock }) => {
-    const t = (clock.elapsedTime * 0.3 + offset) % 1;
+    const t = (clock.elapsedTime * 0.1 + offset) % 1;
     const pos = curvePath.getPoint(t);
     if (meshRef.current) {
       meshRef.current.position.copy(pos);
@@ -112,7 +112,7 @@ export function ReplicationArc({ from, to, color, showLatency, rebalancing }: Re
     return curvePoints[midIdx];
   }, [curvePoints]);
 
-  const packetSpeed = latency > 100 ? 0.15 : latency > 50 ? 0.25 : 0.35;
+  const packetSpeed = latency > 100 ? 0.05 : latency > 50 ? 0.08 : 0.12;
 
   const arcColor = rebalancing ? '#fb923c' : color;
   const arcOpacity = rebalancing ? 0.6 : 0.3;

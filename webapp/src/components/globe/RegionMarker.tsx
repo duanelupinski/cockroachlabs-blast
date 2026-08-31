@@ -136,14 +136,14 @@ export function RegionMarker({
 
   const replicasByNode = useMemo(() => {
     const map = new Map<number, ReplicaInfo[]>();
-    replicas.forEach((r, i) => {
-      const nodeIdx = i % region.nodes;
+    replicas.forEach((r) => {
+      const nodeIdx = r.nodeIndex;
       const existing = map.get(nodeIdx) ?? [];
       existing.push(r);
       map.set(nodeIdx, existing);
     });
     return map;
-  }, [replicas, region.nodes]);
+  }, [replicas]);
 
   return (
     <group>
