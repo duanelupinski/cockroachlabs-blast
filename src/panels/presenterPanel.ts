@@ -61,7 +61,7 @@ export class PresenterPanel {
         await this.pushTopology();
         break;
       case 'runStep':
-        this.runStep(Number(message.index));
+        await this.runStep(Number(message.index));
         break;
       case 'runAll':
         this.runAll();
@@ -77,14 +77,45 @@ export class PresenterPanel {
     }
   }
 
-  private runStep(index: number): void {
+  private async runStep(index: number): Promise<void> {
     const step = this.playbook.steps[index];
     if (!step) return;
     this.sqlTerminal.sendSql(step.sql);
     if (step.snapshot === 'before') {
       void this.captureSnapshot();
     }
-    this.panel.webview.postMessage({ type: 'stepRan', index });
+    const licenseHint = await this.detectLicenseError(step.sql);
+    this.panel.webview.postMessage({ type: 'stepRan', index, error: licenseHint });
+    if (licenseHint) {
+      vscode.window.showErrorMessage(licenseHint);
+    }
+  }
+
+  /** Super regions need an enterprise license; surface that if the SQL will fail. */
+  private async detectLicenseError(statements: string[]): Promise<string | null> {
+    const needsLicense = statements.some((s) => /super\s+region/i.test(s));
+    if (!needsLicense) return null;
+    const ok = await this.ensureConnected();
+    if (!ok) return null;
+    try {
+      await this.conn.query('SET enable_super_regions = on');
+    } catch {
+      /* session setting may not exist on all versions */
+    }
+    for (const raw of statements) {
+      if (!/add\s+super\s+region/i.test(raw)) continue;
+      try {
+        await this.conn.query(raw);
+      } catch (err: any) {
+        const msg = String(err?.message ?? err);
+        if (/already exists|duplicate/i.test(msg)) return null;
+        if (/license|enterprise|unimplemented|not.*enabled/i.test(msg)) {
+          return `Super regions need an enterprise license. Set cockroachBlast.enterpriseLicense (and organization) in settings, then restart the cluster. ${msg}`;
+        }
+        return msg;
+      }
+    }
+    return null;
   }
 
   private runAll(): void {

@@ -84,6 +84,7 @@ export function PresenterView() {
   const [focused, setFocused] = useState<RegionId | null>(null);
   const [showGhost, setShowGhost] = useState(true);
   const [globePaused, setGlobePaused] = useState(false);
+  const [stepError, setStepError] = useState<string | null>(null);
 
   useEffect(() => {
     const cleanup = onMessage((event) => {
@@ -107,6 +108,7 @@ export function PresenterView() {
           break;
         case 'stepRan':
           setStepIndex(msg.index);
+          setStepError(typeof msg.error === 'string' ? msg.error : null);
           break;
       }
     });
@@ -240,6 +242,11 @@ export function PresenterView() {
                 </button>
               ))}
             </div>
+            {stepError && (
+              <div className="mx-3 mb-2 text-[11px] text-red-300 bg-red-950/50 border border-red-500/40 rounded p-2">
+                {stepError}
+              </div>
+            )}
             {currentStep && (
               <div className="border-t border-white/10 p-3 space-y-2">
                 <pre className="text-[10px] font-mono text-emerald-200/80 bg-black/40 p-2 rounded max-h-32 overflow-auto whitespace-pre-wrap">
