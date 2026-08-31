@@ -1,0 +1,16 @@
+src/**
+webapp/src/**
+webapp/node_modules/**
+**/*.ts
+**/*.map
+.gitignore
+tsconfig.json
+webapp/tsconfig.json
+webapp/vite.config.ts
+webapp/tailwind.config.js
+webapp/postcss.config.js
+.cursor/**
+.vscode/**
+node_modules/**
+!webapp/dist/**
+!dist/extension.js

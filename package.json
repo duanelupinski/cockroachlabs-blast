@@ -1,0 +1,99 @@
+{
+  "name": "cockroachlabs-blast",
+  "displayName": "CockroachDB Blast",
+  "description": "Local insecure CockroachDB demo presenter: globe, GDPR super-region playbook, DB Console, and cockroach sql",
+  "version": "0.1.0",
+  "publisher": "cockroachlabs",
+  "license": "MIT",
+  "engines": {
+    "vscode": "^1.85.0"
+  },
+  "categories": ["Other", "Visualization"],
+  "activationEvents": ["onView:blast.cluster"],
+  "main": "./dist/extension.js",
+  "icon": "media/Logo.png",
+  "contributes": {
+    "commands": [
+      {
+        "command": "blast.createCluster",
+        "title": "CockroachDB Blast: Start 9-Node Cluster"
+      },
+      {
+        "command": "blast.destroyCluster",
+        "title": "CockroachDB Blast: Destroy Cluster"
+      },
+      {
+        "command": "blast.openPresenter",
+        "title": "CockroachDB Blast: Open Presenter"
+      },
+      {
+        "command": "blast.openSqlTerminal",
+        "title": "CockroachDB Blast: Open SQL Terminal"
+      },
+      {
+        "command": "blast.selectVersion",
+        "title": "CockroachDB Blast: Select Version"
+      }
+    ],
+    "viewsContainers": {
+      "activitybar": [
+        {
+          "id": "blast",
+          "title": "CRDB Blast",
+          "icon": "media/logo.svg"
+        }
+      ]
+    },
+    "views": {
+      "blast": [
+        {
+          "id": "blast.cluster",
+          "name": "Cluster"
+        }
+      ]
+    },
+    "configuration": {
+      "title": "CockroachDB Blast",
+      "properties": {
+        "cockroachBlast.containerEngine": {
+          "type": "string",
+          "enum": ["auto", "docker", "podman"],
+          "default": "auto",
+          "description": "Local container engine. auto detects Docker then Podman."
+        },
+        "cockroachBlast.cluster.defaultVersion": {
+          "type": "string",
+          "default": "v26.1.5",
+          "description": "CockroachDB image tag (cockroachdb/cockroach)."
+        },
+        "cockroachBlast.enterpriseLicense": {
+          "type": "string",
+          "default": "",
+          "description": "Optional enterprise license for super regions. Never commit this value."
+        },
+        "cockroachBlast.cluster.organization": {
+          "type": "string",
+          "default": "",
+          "description": "cluster.organization setting paired with the enterprise license."
+        }
+      }
+    }
+  },
+  "scripts": {
+    "vscode:prepublish": "npm run build",
+    "build": "npm run build:extension && npm run build:webapp",
+    "build:extension": "esbuild ./src/extension.ts --bundle --outfile=dist/extension.js --external:vscode --format=cjs --platform=node",
+    "build:webapp": "cd webapp && npm run build",
+    "watch": "npm run build:extension -- --watch"
+  },
+  "devDependencies": {
+    "@types/node": "^20.11.0",
+    "@types/pg": "^8.11.0",
+    "@types/vscode": "^1.85.0",
+    "esbuild": "^0.20.0",
+    "typescript": "^5.3.3"
+  },
+  "dependencies": {
+    "pg": "^8.13.0"
+  }
+}

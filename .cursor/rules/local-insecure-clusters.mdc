@@ -1,0 +1,20 @@
+---
+description: All CockroachDB nodes and clusters must run locally in Docker or Podman and always use insecure mode
+alwaysApply: true
+---
+
+# Local insecure CockroachDB clusters
+
+Every CockroachDB node and cluster this project starts must run **locally** in **Docker or Podman**. Detect the engine (Docker vs Podman) the same way as the Engineering Tool; do not start `cockroach` on the host, on Cloud, Kubernetes, or roachprod.
+
+Every node must use **`--insecure`**. SQL clients use `--insecure` / `sslMode: disable`. Do not add cert volumes, secure compose files, CertManager, or a secure-mode toggle.
+
+```text
+# BAD — host binary, TLS, or remote
+cockroach start --certs-dir=./certs --advertise-addr=my.cloud.host
+
+# GOOD — local engine, insecure
+podman/docker run ... cockroach start --insecure --locality=region=eu-west,zone=eu-west-1
+```
+
+Publish SQL and DB Console only on localhost (HAProxy). Do not introduce Cloud, Kubernetes, or remote-cluster paths unless the user explicitly overrides this rule.

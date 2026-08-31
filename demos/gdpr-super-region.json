@@ -1,0 +1,68 @@
+{
+  "id": "gdpr-super-region",
+  "title": "GDPR: keep EU data in the EU",
+  "cluster": { "nodes": 9, "insecure": true },
+  "focusTable": "app.customers",
+  "superRegion": { "name": "eu", "regions": ["eu-west", "eu-central"] },
+  "steps": [
+    {
+      "id": "init-db",
+      "title": "Create a three-region database",
+      "narration": "Register us-east, eu-west, and eu-central. Zone survival keeps a two-region EU super region valid later.",
+      "sql": [
+        "CREATE DATABASE IF NOT EXISTS app;",
+        "ALTER DATABASE app SET PRIMARY REGION 'us-east';",
+        "ALTER DATABASE app ADD REGION IF NOT EXISTS 'eu-west';",
+        "ALTER DATABASE app ADD REGION IF NOT EXISTS 'eu-central';",
+        "ALTER DATABASE app SURVIVE ZONE FAILURE;"
+      ]
+    },
+    {
+      "id": "seed-global",
+      "title": "Create customers — placed across all three regions",
+      "narration": "A GLOBAL table is the default multi-region spread: voting replicas live in us-east, eu-west, and eu-central. Watch the globe.",
+      "snapshot": "before",
+      "sql": [
+        "USE app;",
+        "CREATE TABLE IF NOT EXISTS customers (id INT PRIMARY KEY, name STRING, country STRING);",
+        "INSERT INTO customers SELECT i, 'customer-' || i, CASE WHEN i % 2 = 0 THEN 'DE' ELSE 'IE' END FROM generate_series(1, 300) AS g(i) ON CONFLICT DO NOTHING;",
+        "ALTER TABLE customers SPLIT AT VALUES (100), (200);",
+        "ALTER TABLE customers SET LOCALITY GLOBAL;"
+      ]
+    },
+    {
+      "id": "show-before",
+      "title": "Show ranges — replicas in all three regions",
+      "narration": "This is the before picture: app.customers is not bound to Europe. Replicas appear in Virginia, Ireland, and Frankfurt.",
+      "sql": [
+        "SHOW RANGES FROM TABLE app.customers WITH DETAILS;"
+      ]
+    },
+    {
+      "id": "add-super-region",
+      "title": "Create super region eu",
+      "narration": "Define the GDPR boundary: Ireland + Frankfurt. The table is not bound yet — replicas can still sit in us-east.",
+      "sql": [
+        "SET enable_super_regions = 'on';",
+        "ALTER DATABASE app ADD SUPER REGION \"eu\" VALUES 'eu-west', 'eu-central';",
+        "SHOW SUPER REGIONS FROM DATABASE app;"
+      ]
+    },
+    {
+      "id": "pin-table",
+      "title": "Bind customers solely to super region eu",
+      "narration": "Pin the table to the super region. Voting replicas leave us-east and stay in the two EU regions.",
+      "sql": [
+        "ALTER TABLE app.customers SET LOCALITY REGIONAL BY TABLE IN \"eu\";"
+      ]
+    },
+    {
+      "id": "show-after",
+      "title": "Show ranges — bound to the EU only",
+      "narration": "After picture: app.customers lives only in eu-west and eu-central. That is the GDPR punchline.",
+      "sql": [
+        "SHOW RANGES FROM TABLE app.customers WITH DETAILS;"
+      ]
+    }
+  ]
+}

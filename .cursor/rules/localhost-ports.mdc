@@ -1,0 +1,15 @@
+---
+description: Default published ports for local CockroachDB demos — SQL 26257, DB Console 8080
+alwaysApply: true
+---
+
+# Localhost ports
+
+HAProxy (or the first node) must publish these **default** host ports. Do not switch the DB Console to 18080 or another port unless 8080 is actually bound and the user asks for a fallback.
+
+| Service | Host port |
+| --- | --- |
+| SQL | `26257` |
+| DB Console / HTTP | `8080` |
+
+The presenter DB Console tab and cluster manager `httpPort` must stay `8080`. Compose maps `8080:8080` and `26257:26257`.
