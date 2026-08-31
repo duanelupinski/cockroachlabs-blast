@@ -50,11 +50,14 @@ That produces `dist/cockroachlabs-blast-0.1.0.vsix`.
 
 **Cursor**
 
+`cursor` on your PATH is often the **agent CLI**, which does not install extensions (`No Cursor IDE installation found`). Use the IDE binary, or install from the UI.
+
 ```bash
-cursor --install-extension dist/cockroachlabs-blast-0.1.0.vsix
+# macOS — Cursor.app CLI (not ~/.local/bin/cursor)
+/Applications/Cursor.app/Contents/Resources/app/bin/cursor --install-extension dist/cockroachlabs-blast-0.1.0.vsix
 ```
 
-Then reload the window (`Developer: Reload Window`) if the sidebar does not appear.
+Then **Developer: Reload Window**. Optional: Command Palette → **Shell Command: Install 'cursor' command in PATH** so a new terminal uses the IDE `cursor`.
 
 **VS Code**
 
