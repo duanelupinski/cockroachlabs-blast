@@ -83,7 +83,7 @@ export function PresenterView() {
   const [consoleKey, setConsoleKey] = useState(0);
   const [focused, setFocused] = useState<RegionId | null>(null);
   const [showGhost, setShowGhost] = useState(true);
-  const [globePaused, setGlobePaused] = useState(false);
+  const [autoRotate, setAutoRotate] = useState(true);
   const [stepError, setStepError] = useState<string | null>(null);
 
   useEffect(() => {
@@ -137,6 +137,7 @@ export function PresenterView() {
   }, [liveNodes]);
 
   const euRegions = playbook?.superRegion?.regions ?? ['eu-west', 'eu-central'];
+  const superRegionName = playbook?.superRegion?.name ?? 'EU';
   const currentStep = playbook?.steps[stepIndex];
   const consoleUrl = `http://localhost:${httpPort}`;
 
@@ -160,14 +161,6 @@ export function PresenterView() {
         >
           DB Console
         </button>
-        {tab === 'globe' && (
-          <button
-            className="text-xs px-2 py-1 rounded bg-white/10 hover:bg-white/20"
-            onClick={() => setGlobePaused((p) => !p)}
-          >
-            {globePaused ? 'Resume globe' : 'Pause globe'}
-          </button>
-        )}
         <span className="ml-auto text-[10px] font-mono text-white/40">
           {connected ? 'connected' : 'waiting for cluster'}
           {topology?.focusTable ? ` · ${topology.focusTable}` : ''}
@@ -178,7 +171,7 @@ export function PresenterView() {
         <div className="flex-1 flex min-h-0">
           <div className="flex-1 relative min-w-0">
             <GlobeScene
-              autoRotate={!focused && !globePaused}
+              autoRotate={!focused && autoRotate}
               focusLat={focused ? REGIONS.find((r) => r.id === focused)?.lat : null}
               focusLng={focused ? REGIONS.find((r) => r.id === focused)?.lng : null}
               onFocusComplete={() => setFocused(null)}
@@ -211,6 +204,23 @@ export function PresenterView() {
                 />
               ))}
             </GlobeScene>
+            <button
+              type="button"
+              onClick={() => setAutoRotate((prev) => !prev)}
+              className="absolute bottom-4 right-4 z-10 w-8 h-8 rounded-full bg-white/10 hover:bg-white/20 border border-white/20 flex items-center justify-center transition-colors"
+              title={autoRotate ? 'Pause rotation' : 'Resume rotation'}
+            >
+              {autoRotate ? (
+                <svg width="12" height="14" viewBox="0 0 12 14" fill="none">
+                  <rect x="1" y="1" width="3" height="12" rx="1" fill="white" fillOpacity="0.6" />
+                  <rect x="8" y="1" width="3" height="12" rx="1" fill="white" fillOpacity="0.6" />
+                </svg>
+              ) : (
+                <svg width="12" height="14" viewBox="0 0 12 14" fill="none">
+                  <path d="M2 1L11 7L2 13V1Z" fill="white" fillOpacity="0.6" />
+                </svg>
+              )}
+            </button>
             {showGhost && snapshot && (
               <div className="absolute bottom-2 left-2 text-[10px] font-mono text-white/40 bg-black/40 px-2 py-1 rounded">
                 Ghost: before super region · live pins update every 2s
@@ -222,7 +232,7 @@ export function PresenterView() {
             <div className="px-3 py-2 border-b border-white/10">
               <div className="text-sm font-semibold">{playbook?.title ?? 'Playbook'}</div>
               <div className="text-[10px] text-white/40 mt-1">
-                Super region <span className="text-emerald-400">{playbook?.superRegion?.name}</span>:{' '}
+                Super region <span className="text-emerald-400">{superRegionName}</span>:{' '}
                 {euRegions.join(', ')}
               </div>
             </div>

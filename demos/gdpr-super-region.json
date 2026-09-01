@@ -3,7 +3,7 @@
   "title": "GDPR: keep EU data in the EU",
   "cluster": { "nodes": 9, "insecure": true },
   "focusTable": "app.customers",
-  "superRegion": { "name": "eu", "regions": ["eu-west", "eu-central"] },
+  "superRegion": { "name": "EU", "regions": ["eu-west", "eu-central"] },
   "steps": [
     {
       "id": "init-db",
@@ -11,9 +11,9 @@
       "narration": "Register us-east, eu-west, and eu-central. Zone survival keeps a two-region EU super region valid later.",
       "sql": [
         "CREATE DATABASE IF NOT EXISTS app;",
-        "ALTER DATABASE app SET PRIMARY REGION 'us-east';",
-        "ALTER DATABASE app ADD REGION IF NOT EXISTS 'eu-west';",
-        "ALTER DATABASE app ADD REGION IF NOT EXISTS 'eu-central';",
+        "ALTER DATABASE app SET PRIMARY REGION \"us-east\";",
+        "ALTER DATABASE app ADD REGION \"eu-west\";",
+        "ALTER DATABASE app ADD REGION \"eu-central\";",
         "ALTER DATABASE app SURVIVE ZONE FAILURE;"
       ]
     },
@@ -26,6 +26,7 @@
         "USE app;",
         "CREATE TABLE IF NOT EXISTS customers (id INT PRIMARY KEY, name STRING, country STRING);",
         "INSERT INTO customers SELECT i, 'customer-' || i, CASE WHEN i % 2 = 0 THEN 'DE' ELSE 'IE' END FROM generate_series(1, 300) AS g(i) ON CONFLICT DO NOTHING;",
+        "ALTER TABLE customers SET (schema_locked = false);",
         "ALTER TABLE customers SPLIT AT VALUES (100), (200);",
         "ALTER TABLE customers SET LOCALITY GLOBAL;"
       ]
@@ -33,35 +34,37 @@
     {
       "id": "show-before",
       "title": "Show ranges — replicas in all three regions",
-      "narration": "This is the before picture: app.customers is not bound to Europe. Replicas appear in Virginia, Ireland, and Frankfurt.",
+      "narration": "This is the before picture: app.customers is not bound to Europe. Columns are range_id, lease-holder region, and voting/non-voting regions only.",
       "sql": [
-        "SHOW RANGES FROM TABLE app.customers WITH DETAILS;"
+        "WITH ranges AS (SELECT range_id, lease_holder_locality, voting_replicas, non_voting_replicas, replicas, replica_localities FROM [SHOW RANGES FROM TABLE app.customers WITH DETAILS]), pairs AS (SELECT r.range_id, r.replicas[i] AS node_id, split_part(split_part(r.replica_localities[i], 'region=', 2), ',', 1) AS region FROM ranges r, generate_series(1, COALESCE(array_length(r.replicas, 1), 0)) AS i) SELECT r.range_id, split_part(split_part(r.lease_holder_locality, 'region=', 2), ',', 1) AS lease_holder_locality, ARRAY(SELECT p.region FROM pairs p WHERE p.range_id = r.range_id AND p.node_id = ANY (r.voting_replicas)) AS voting_replicas, ARRAY(SELECT p.region FROM pairs p WHERE p.range_id = r.range_id AND p.node_id = ANY (r.non_voting_replicas)) AS non_voting_replicas FROM ranges r ORDER BY r.range_id;"
       ]
     },
     {
       "id": "add-super-region",
-      "title": "Create super region eu",
+      "title": "Create super region EU",
       "narration": "Define the GDPR boundary: Ireland + Frankfurt. The table is not bound yet — replicas can still sit in us-east.",
       "sql": [
         "SET enable_super_regions = 'on';",
-        "ALTER DATABASE app ADD SUPER REGION \"eu\" VALUES 'eu-west', 'eu-central';",
+        "ALTER DATABASE app ADD SUPER REGION \"EU\" VALUES \"eu-west\", \"eu-central\";",
         "SHOW SUPER REGIONS FROM DATABASE app;"
       ]
     },
     {
       "id": "pin-table",
-      "title": "Bind customers solely to super region eu",
-      "narration": "Pin the table to the super region. Voting replicas leave us-east and stay in the two EU regions.",
+      "title": "Bind customers solely to super region EU",
+      "narration": "Unlock the table, pin it to super region EU, then lock the schema again. Voting replicas leave us-east.",
       "sql": [
-        "ALTER TABLE app.customers SET LOCALITY REGIONAL BY TABLE IN \"eu\";"
+        "ALTER TABLE app.customers SET (schema_locked = false);",
+        "ALTER TABLE app.customers SET LOCALITY REGIONAL BY TABLE IN \"EU\";",
+        "ALTER TABLE app.customers SET (schema_locked = true);"
       ]
     },
     {
       "id": "show-after",
       "title": "Show ranges — bound to the EU only",
-      "narration": "After picture: app.customers lives only in eu-west and eu-central. That is the GDPR punchline.",
+      "narration": "After picture: same compact columns. Voting replicas should be eu-west and/or eu-central only.",
       "sql": [
-        "SHOW RANGES FROM TABLE app.customers WITH DETAILS;"
+        "WITH ranges AS (SELECT range_id, lease_holder_locality, voting_replicas, non_voting_replicas, replicas, replica_localities FROM [SHOW RANGES FROM TABLE app.customers WITH DETAILS]), pairs AS (SELECT r.range_id, r.replicas[i] AS node_id, split_part(split_part(r.replica_localities[i], 'region=', 2), ',', 1) AS region FROM ranges r, generate_series(1, COALESCE(array_length(r.replicas, 1), 0)) AS i) SELECT r.range_id, split_part(split_part(r.lease_holder_locality, 'region=', 2), ',', 1) AS lease_holder_locality, ARRAY(SELECT p.region FROM pairs p WHERE p.range_id = r.range_id AND p.node_id = ANY (r.voting_replicas)) AS voting_replicas, ARRAY(SELECT p.region FROM pairs p WHERE p.range_id = r.range_id AND p.node_id = ANY (r.non_voting_replicas)) AS non_voting_replicas FROM ranges r ORDER BY r.range_id;"
       ]
     }
   ]
