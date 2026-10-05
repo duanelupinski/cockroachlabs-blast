@@ -10,6 +10,7 @@ webapp/vite.config.ts
 webapp/tailwind.config.js
 webapp/postcss.config.js
 .cursor/**
+.playwright-cli/**
 .vscode/**
 node_modules/**
 !webapp/dist/**

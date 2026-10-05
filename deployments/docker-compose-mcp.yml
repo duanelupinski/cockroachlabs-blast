@@ -1,10 +1,10 @@
-# Local insecure 6-node cluster: 3× us-east, 3× eu-west
+# Local insecure MCP demo: 3× us-east, one node per zone.
 # Never start this with TLS. Demos use --insecure only.
 x-node: &node
   image: cockroachdb/cockroach:${CRDB_VERSION:-v26.1.5}
   labels:
     - "managed-by=cockroach-blast"
-    - "blast-demo=multi-region"
+    - "blast-demo=mcp"
   networks:
     - blast-net
   healthcheck:
@@ -50,48 +50,12 @@ services:
       --locality=region=us-east,zone=us-east-3
       --cache=64MiB --max-sql-memory=256MiB
 
-  blast-node-4:
-    <<: *node
-    container_name: blast-node-4
-    hostname: blast-node-4
-    command: >
-      start --insecure
-      --join=blast-node-1:26357,blast-node-2:26357,blast-node-3:26357
-      --listen-addr=0.0.0.0:26357 --advertise-addr=blast-node-4:26357
-      --sql-addr=0.0.0.0:26257 --http-addr=0.0.0.0:8080 --store=node4
-      --locality=region=eu-west,zone=eu-west-1
-      --cache=64MiB --max-sql-memory=256MiB
-
-  blast-node-5:
-    <<: *node
-    container_name: blast-node-5
-    hostname: blast-node-5
-    command: >
-      start --insecure
-      --join=blast-node-1:26357,blast-node-2:26357,blast-node-3:26357
-      --listen-addr=0.0.0.0:26357 --advertise-addr=blast-node-5:26357
-      --sql-addr=0.0.0.0:26257 --http-addr=0.0.0.0:8080 --store=node5
-      --locality=region=eu-west,zone=eu-west-2
-      --cache=64MiB --max-sql-memory=256MiB
-
-  blast-node-6:
-    <<: *node
-    container_name: blast-node-6
-    hostname: blast-node-6
-    command: >
-      start --insecure
-      --join=blast-node-1:26357,blast-node-2:26357,blast-node-3:26357
-      --listen-addr=0.0.0.0:26357 --advertise-addr=blast-node-6:26357
-      --sql-addr=0.0.0.0:26257 --http-addr=0.0.0.0:8080 --store=node6
-      --locality=region=eu-west,zone=eu-west-3
-      --cache=64MiB --max-sql-memory=256MiB
-
   blast-init:
     image: cockroachdb/cockroach:${CRDB_VERSION:-v26.1.5}
     container_name: blast-init
     labels:
       - "managed-by=cockroach-blast"
-      - "blast-demo=multi-region"
+      - "blast-demo=mcp"
     entrypoint: ["/bin/sh", "-c"]
     command:
       - |
@@ -116,12 +80,12 @@ services:
     container_name: blast-lb
     labels:
       - "managed-by=cockroach-blast"
-      - "blast-demo=multi-region"
+      - "blast-demo=mcp"
     ports:
       - "26257:26257"
       - "8080:8080"
     volumes:
-      - ./haproxy.cfg:/usr/local/etc/haproxy/haproxy.cfg:ro
+      - ./haproxy-mcp.cfg:/usr/local/etc/haproxy/haproxy.cfg:ro
     networks:
       - blast-net
     depends_on:
@@ -131,6 +95,18 @@ services:
         condition: service_healthy
       blast-node-3:
         condition: service_healthy
+
+  blast-workload:
+    image: cockroachdb/cockroach:${CRDB_VERSION:-v26.1.5}
+    container_name: blast-workload
+    hostname: blast-workload
+    labels:
+      - "managed-by=cockroach-blast"
+      - "blast-demo=mcp"
+    entrypoint: ["/bin/sh", "-c"]
+    command: ["sleep infinity"]
+    networks:
+      - blast-net
 
 networks:
   blast-net:

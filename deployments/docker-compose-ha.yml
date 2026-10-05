@@ -1,10 +1,11 @@
-# Local insecure 6-node cluster: 3× us-east, 3× eu-west
+# Local insecure HA cluster: 1× us-east with zones us-east-1/2/3
+# Starts 3 nodes; blast-node-4/5/6 join later via the presenter (profile scale-out).
 # Never start this with TLS. Demos use --insecure only.
 x-node: &node
   image: cockroachdb/cockroach:${CRDB_VERSION:-v26.1.5}
   labels:
     - "managed-by=cockroach-blast"
-    - "blast-demo=multi-region"
+    - "blast-demo=ha"
   networks:
     - blast-net
   healthcheck:
@@ -54,35 +55,116 @@ services:
     <<: *node
     container_name: blast-node-4
     hostname: blast-node-4
+    profiles: ["scale-out"]
     command: >
       start --insecure
       --join=blast-node-1:26357,blast-node-2:26357,blast-node-3:26357
       --listen-addr=0.0.0.0:26357 --advertise-addr=blast-node-4:26357
       --sql-addr=0.0.0.0:26257 --http-addr=0.0.0.0:8080 --store=node4
-      --locality=region=eu-west,zone=eu-west-1
+      --locality=region=us-east,zone=us-east-1
       --cache=64MiB --max-sql-memory=256MiB
 
   blast-node-5:
     <<: *node
     container_name: blast-node-5
     hostname: blast-node-5
+    profiles: ["scale-out"]
     command: >
       start --insecure
       --join=blast-node-1:26357,blast-node-2:26357,blast-node-3:26357
       --listen-addr=0.0.0.0:26357 --advertise-addr=blast-node-5:26357
       --sql-addr=0.0.0.0:26257 --http-addr=0.0.0.0:8080 --store=node5
-      --locality=region=eu-west,zone=eu-west-2
+      --locality=region=us-east,zone=us-east-2
       --cache=64MiB --max-sql-memory=256MiB
 
   blast-node-6:
     <<: *node
     container_name: blast-node-6
     hostname: blast-node-6
+    profiles: ["scale-out"]
     command: >
       start --insecure
       --join=blast-node-1:26357,blast-node-2:26357,blast-node-3:26357
       --listen-addr=0.0.0.0:26357 --advertise-addr=blast-node-6:26357
       --sql-addr=0.0.0.0:26257 --http-addr=0.0.0.0:8080 --store=node6
+      --locality=region=us-east,zone=us-east-3
+      --cache=64MiB --max-sql-memory=256MiB
+
+  blast-node-7:
+    <<: *node
+    container_name: blast-node-7
+    hostname: blast-node-7
+    profiles: ["multi-region"]
+    command: >
+      start --insecure
+      --join=blast-node-1:26357,blast-node-2:26357,blast-node-3:26357
+      --listen-addr=0.0.0.0:26357 --advertise-addr=blast-node-7:26357
+      --sql-addr=0.0.0.0:26257 --http-addr=0.0.0.0:8080 --store=node7
+      --locality=region=us-west,zone=us-west-1
+      --cache=64MiB --max-sql-memory=256MiB
+
+  blast-node-8:
+    <<: *node
+    container_name: blast-node-8
+    hostname: blast-node-8
+    profiles: ["multi-region"]
+    command: >
+      start --insecure
+      --join=blast-node-1:26357,blast-node-2:26357,blast-node-3:26357
+      --listen-addr=0.0.0.0:26357 --advertise-addr=blast-node-8:26357
+      --sql-addr=0.0.0.0:26257 --http-addr=0.0.0.0:8080 --store=node8
+      --locality=region=us-west,zone=us-west-2
+      --cache=64MiB --max-sql-memory=256MiB
+
+  blast-node-9:
+    <<: *node
+    container_name: blast-node-9
+    hostname: blast-node-9
+    profiles: ["multi-region"]
+    command: >
+      start --insecure
+      --join=blast-node-1:26357,blast-node-2:26357,blast-node-3:26357
+      --listen-addr=0.0.0.0:26357 --advertise-addr=blast-node-9:26357
+      --sql-addr=0.0.0.0:26257 --http-addr=0.0.0.0:8080 --store=node9
+      --locality=region=us-west,zone=us-west-3
+      --cache=64MiB --max-sql-memory=256MiB
+
+  blast-node-10:
+    <<: *node
+    container_name: blast-node-10
+    hostname: blast-node-10
+    profiles: ["multi-region"]
+    command: >
+      start --insecure
+      --join=blast-node-1:26357,blast-node-2:26357,blast-node-3:26357
+      --listen-addr=0.0.0.0:26357 --advertise-addr=blast-node-10:26357
+      --sql-addr=0.0.0.0:26257 --http-addr=0.0.0.0:8080 --store=node10
+      --locality=region=eu-west,zone=eu-west-1
+      --cache=64MiB --max-sql-memory=256MiB
+
+  blast-node-11:
+    <<: *node
+    container_name: blast-node-11
+    hostname: blast-node-11
+    profiles: ["multi-region"]
+    command: >
+      start --insecure
+      --join=blast-node-1:26357,blast-node-2:26357,blast-node-3:26357
+      --listen-addr=0.0.0.0:26357 --advertise-addr=blast-node-11:26357
+      --sql-addr=0.0.0.0:26257 --http-addr=0.0.0.0:8080 --store=node11
+      --locality=region=eu-west,zone=eu-west-2
+      --cache=64MiB --max-sql-memory=256MiB
+
+  blast-node-12:
+    <<: *node
+    container_name: blast-node-12
+    hostname: blast-node-12
+    profiles: ["multi-region"]
+    command: >
+      start --insecure
+      --join=blast-node-1:26357,blast-node-2:26357,blast-node-3:26357
+      --listen-addr=0.0.0.0:26357 --advertise-addr=blast-node-12:26357
+      --sql-addr=0.0.0.0:26257 --http-addr=0.0.0.0:8080 --store=node12
       --locality=region=eu-west,zone=eu-west-3
       --cache=64MiB --max-sql-memory=256MiB
 
@@ -91,7 +173,7 @@ services:
     container_name: blast-init
     labels:
       - "managed-by=cockroach-blast"
-      - "blast-demo=multi-region"
+      - "blast-demo=ha"
     entrypoint: ["/bin/sh", "-c"]
     command:
       - |
@@ -100,6 +182,7 @@ services:
         cockroach sql --insecure --host=blast-node-1:26357 -e "
           GRANT admin TO root;
           SET CLUSTER SETTING sql.restrict_system_interface.enabled = false;
+          SET CLUSTER SETTING server.time_until_store_dead = '1m15s';
         "
     depends_on:
       blast-node-1:
@@ -116,12 +199,12 @@ services:
     container_name: blast-lb
     labels:
       - "managed-by=cockroach-blast"
-      - "blast-demo=multi-region"
+      - "blast-demo=ha"
     ports:
       - "26257:26257"
       - "8080:8080"
     volumes:
-      - ./haproxy.cfg:/usr/local/etc/haproxy/haproxy.cfg:ro
+      - ./haproxy-ha.cfg:/usr/local/etc/haproxy/haproxy.cfg:ro
     networks:
       - blast-net
     depends_on:
@@ -131,6 +214,19 @@ services:
         condition: service_healthy
       blast-node-3:
         condition: service_healthy
+
+  # Cockroach binary only — never a cluster node. Survives kill of n1/n2/n3.
+  blast-workload:
+    image: cockroachdb/cockroach:${CRDB_VERSION:-v26.1.5}
+    container_name: blast-workload
+    hostname: blast-workload
+    labels:
+      - "managed-by=cockroach-blast"
+      - "blast-demo=ha"
+    entrypoint: ["/bin/sh", "-c"]
+    command: ["sleep infinity"]
+    networks:
+      - blast-net
 
 networks:
   blast-net:

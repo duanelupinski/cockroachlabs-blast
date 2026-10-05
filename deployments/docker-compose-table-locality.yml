@@ -1,10 +1,10 @@
-# Local insecure 6-node cluster: 3× us-east, 3× eu-west
+# Local insecure 9-node cluster: 3× us-east, 3× eu-west, 3× us-west
 # Never start this with TLS. Demos use --insecure only.
 x-node: &node
   image: cockroachdb/cockroach:${CRDB_VERSION:-v26.1.5}
   labels:
     - "managed-by=cockroach-blast"
-    - "blast-demo=multi-region"
+    - "blast-demo=table-locality"
   networks:
     - blast-net
   healthcheck:
@@ -86,12 +86,48 @@ services:
       --locality=region=eu-west,zone=eu-west-3
       --cache=64MiB --max-sql-memory=256MiB
 
+  blast-node-7:
+    <<: *node
+    container_name: blast-node-7
+    hostname: blast-node-7
+    command: >
+      start --insecure
+      --join=blast-node-1:26357,blast-node-2:26357,blast-node-3:26357
+      --listen-addr=0.0.0.0:26357 --advertise-addr=blast-node-7:26357
+      --sql-addr=0.0.0.0:26257 --http-addr=0.0.0.0:8080 --store=node7
+      --locality=region=us-west,zone=us-west-1
+      --cache=64MiB --max-sql-memory=256MiB
+
+  blast-node-8:
+    <<: *node
+    container_name: blast-node-8
+    hostname: blast-node-8
+    command: >
+      start --insecure
+      --join=blast-node-1:26357,blast-node-2:26357,blast-node-3:26357
+      --listen-addr=0.0.0.0:26357 --advertise-addr=blast-node-8:26357
+      --sql-addr=0.0.0.0:26257 --http-addr=0.0.0.0:8080 --store=node8
+      --locality=region=us-west,zone=us-west-2
+      --cache=64MiB --max-sql-memory=256MiB
+
+  blast-node-9:
+    <<: *node
+    container_name: blast-node-9
+    hostname: blast-node-9
+    command: >
+      start --insecure
+      --join=blast-node-1:26357,blast-node-2:26357,blast-node-3:26357
+      --listen-addr=0.0.0.0:26357 --advertise-addr=blast-node-9:26357
+      --sql-addr=0.0.0.0:26257 --http-addr=0.0.0.0:8080 --store=node9
+      --locality=region=us-west,zone=us-west-3
+      --cache=64MiB --max-sql-memory=256MiB
+
   blast-init:
     image: cockroachdb/cockroach:${CRDB_VERSION:-v26.1.5}
     container_name: blast-init
     labels:
       - "managed-by=cockroach-blast"
-      - "blast-demo=multi-region"
+      - "blast-demo=table-locality"
     entrypoint: ["/bin/sh", "-c"]
     command:
       - |
@@ -116,12 +152,12 @@ services:
     container_name: blast-lb
     labels:
       - "managed-by=cockroach-blast"
-      - "blast-demo=multi-region"
+      - "blast-demo=table-locality"
     ports:
       - "26257:26257"
       - "8080:8080"
     volumes:
-      - ./haproxy.cfg:/usr/local/etc/haproxy/haproxy.cfg:ro
+      - ./haproxy-table-locality.cfg:/usr/local/etc/haproxy/haproxy.cfg:ro
     networks:
       - blast-net
     depends_on:

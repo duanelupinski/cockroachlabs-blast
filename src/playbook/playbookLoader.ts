@@ -1,12 +1,27 @@
 import * as fs from 'fs';
 import * as path from 'path';
 
+export interface SuperRegionDef {
+  name: string;
+  regions: string[];
+}
+
 export interface PlaybookStep {
   id: string;
   title: string;
   narration?: string;
   sql: string[];
+  focusTable?: string;
   snapshot?: 'before' | 'after';
+  action?: 'upgrade-node' | 'movr-init' | 'movr-run' | 'mcp-prompt';
+  node?: number;
+  prompt?: string;
+}
+
+export interface UpgradePlaybook {
+  from: string;
+  to: string;
+  region: string;
 }
 
 export interface Playbook {
@@ -14,7 +29,9 @@ export interface Playbook {
   title: string;
   cluster: { nodes: number; insecure: boolean };
   focusTable: string;
-  superRegion?: { name: string; regions: string[] };
+  superRegions?: SuperRegionDef[];
+  superRegion?: SuperRegionDef;
+  upgrade?: UpgradePlaybook;
   steps: PlaybookStep[];
 }
 

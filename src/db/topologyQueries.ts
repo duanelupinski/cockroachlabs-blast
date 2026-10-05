@@ -5,6 +5,7 @@ export interface TopologyNode {
   address: string;
   locality: string;
   isLive: boolean;
+  buildTag?: string;
 }
 
 export interface TopologyRange {
@@ -12,6 +13,7 @@ export interface TopologyRange {
   leaseHolder: number;
   replicas: number[];
   votingReplicas: number[];
+  startPretty?: string;
 }
 
 function parseLiveness(val: unknown): boolean {
@@ -34,6 +36,11 @@ function parseArray(val: unknown): number[] {
 
 export async function queryNodes(conn: ConnectionManager): Promise<TopologyNode[]> {
   const attempts = [
+    `SELECT n.node_id, n.address, n.locality, n.is_live
+     FROM crdb_internal.gossip_nodes n
+     LEFT JOIN crdb_internal.gossip_liveness l ON n.node_id = l.node_id
+     WHERE coalesce(l.membership::string, 'active') NOT IN ('decommissioned')
+     ORDER BY n.node_id`,
     'SELECT node_id, address, locality, is_live FROM crdb_internal.gossip_nodes ORDER BY node_id',
     'SELECT node_id, address, locality, is_available AS is_live FROM crdb_internal.kv_node_status ORDER BY node_id',
     'SELECT node_id, address, locality, is_live FROM crdb_internal.kv_node_status ORDER BY node_id',
@@ -56,6 +63,43 @@ export async function queryNodes(conn: ConnectionManager): Promise<TopologyNode[
   return [];
 }
 
+export async function queryNodeBuildTags(conn: ConnectionManager): Promise<Record<number, string>> {
+  const attempts = [
+    `SELECT node_id, tag AS value FROM crdb_internal.kv_node_status`,
+    `SELECT node_id, value FROM crdb_internal.node_build_info WHERE field IN ('Version', 'Tag')`,
+  ];
+  for (const sql of attempts) {
+    try {
+      const r = await conn.query(sql);
+      const tags: Record<number, string> = {};
+      for (const row of r.rows) {
+        const tag = String(row.value ?? '').trim();
+        if (tag) tags[Number(row.node_id)] = tag;
+      }
+      if (Object.keys(tags).length > 0) return tags;
+    } catch {
+      /* next */
+    }
+  }
+  return {};
+}
+
+function mapRangeRows(rows: Array<Record<string, unknown>>): TopologyRange[] {
+  return rows
+    .map((row) => {
+      const replicas = parseArray(row.replicas ?? row.replica_localities);
+      const voting = parseArray(row.voting_replicas ?? row.replicas);
+      return {
+        rangeId: Number(row.range_id ?? 0),
+        leaseHolder: Number(row.lease_holder ?? replicas[0] ?? 0),
+        replicas,
+        votingReplicas: voting.length ? voting : replicas,
+        startPretty: String(row.start_pretty ?? row.pretty_start_key ?? row.start_key ?? ''),
+      };
+    })
+    .filter((rg) => rg.replicas.length > 0);
+}
+
 export async function queryTableRanges(
   conn: ConnectionManager,
   tableRef: string
@@ -70,16 +114,7 @@ export async function queryTableRanges(
     try {
       const r = await conn.query(sql);
       if (r.rows.length === 0) continue;
-      return r.rows.map((row: any) => {
-        const replicas = parseArray(row.replicas ?? row.replica_localities);
-        const voting = parseArray(row.voting_replicas ?? row.replicas);
-        return {
-          rangeId: Number(row.range_id ?? 0),
-          leaseHolder: Number(row.lease_holder ?? replicas[0] ?? 0),
-          replicas,
-          votingReplicas: voting.length ? voting : replicas,
-        };
-      }).filter((rg) => rg.replicas.length > 0);
+      return mapRangeRows(r.rows as Array<Record<string, unknown>>);
     } catch {
       /* next */
     }
@@ -106,31 +141,172 @@ export async function queryTableRanges(
       leaseHolder: Number(row.lease_holder),
       replicas: parseArray(row.replicas),
       votingReplicas: parseArray(row.voting_replicas),
+      startPretty: String(row.start_pretty ?? ''),
     }));
   } catch {
     return [];
   }
 }
 
+export const DEMO_TABLES = ['app.prices', 'app.orders', 'app.customers'] as const;
+
+export interface RegionZoneCounts {
+  replicas: number;
+  byZone: Record<string, number>;
+}
+
+export type TableReplicaCounts = Record<string, Record<string, RegionZoneCounts>>;
+
+function parseLocalityParts(locality: string): { region: string; zone: string } {
+  const region = /region=([^,]+)/.exec(locality)?.[1] ?? 'unknown';
+  const zone = /zone=([^,]+)/.exec(locality)?.[1] ?? 'unknown';
+  return { region, zone };
+}
+
 export function replicaCountsByRegion(
   nodes: TopologyNode[],
   ranges: TopologyRange[]
-): Record<string, { voting: number; nonVoting: number; leaseholder: number }> {
-  const nodeRegion = new Map<number, string>();
-  for (const n of nodes) {
-    const m = /region=([^,]+)/.exec(n.locality);
-    nodeRegion.set(n.nodeId, m?.[1] ?? 'unknown');
+): Record<string, { replicas: number }> {
+  const detailed = replicaCountsByRegionAndZone(nodes, ranges);
+  const out: Record<string, { replicas: number }> = {};
+  for (const [region, slot] of Object.entries(detailed)) {
+    out[region] = { replicas: slot.replicas };
   }
-  const out: Record<string, { voting: number; nonVoting: number; leaseholder: number }> = {};
+  return out;
+}
+
+export function replicaCountsByRegionAndZone(
+  nodes: TopologyNode[],
+  ranges: TopologyRange[]
+): Record<string, RegionZoneCounts> {
+  const nodeLoc = new Map<number, { region: string; zone: string }>();
+  for (const n of nodes) {
+    nodeLoc.set(n.nodeId, parseLocalityParts(n.locality));
+  }
+  const out: Record<string, RegionZoneCounts> = {};
   for (const range of ranges) {
-    const voting = new Set(range.votingReplicas);
     for (const id of range.replicas) {
-      const region = nodeRegion.get(id) ?? 'unknown';
-      const slot = out[region] ?? { voting: 0, nonVoting: 0, leaseholder: 0 };
-      if (id === range.leaseHolder) slot.leaseholder++;
-      if (voting.has(id)) slot.voting++;
-      else slot.nonVoting++;
-      out[region] = slot;
+      const loc = nodeLoc.get(id) ?? { region: 'unknown', zone: 'unknown' };
+      const slot = out[loc.region] ?? { replicas: 0, byZone: {} };
+      slot.replicas++;
+      slot.byZone[loc.zone] = (slot.byZone[loc.zone] ?? 0) + 1;
+      out[loc.region] = slot;
+    }
+  }
+  return out;
+}
+
+export async function queryDemoTableCounts(
+  conn: ConnectionManager,
+  nodes: TopologyNode[]
+): Promise<TableReplicaCounts> {
+  const byTable: TableReplicaCounts = {};
+  for (const table of DEMO_TABLES) {
+    const ranges = await queryTableRanges(conn, table);
+    byTable[table] = replicaCountsByRegionAndZone(nodes, ranges);
+  }
+  return byTable;
+}
+
+/** True for a live RBR span (`…/"\x80"`), not a gap (`IndexMin`, `PrefixEnd`) or old id-split (`…/1/100`). */
+function isRbrDataRange(pretty: string): boolean {
+  if (/PrefixEnd|IndexMin|TableMin|IndexMax/i.test(pretty)) return false;
+  return /"[^"]+"/.test(pretty);
+}
+
+function majorityHomeRegion(range: TopologyRange, nodes: TopologyNode[]): string | null {
+  const nodeLoc = new Map<number, string>();
+  for (const n of nodes) {
+    nodeLoc.set(n.nodeId, parseLocalityParts(n.locality).region);
+  }
+  const counts = new Map<string, number>();
+  for (const id of range.replicas) {
+    const region = nodeLoc.get(id);
+    if (!region) continue;
+    counts.set(region, (counts.get(region) ?? 0) + 1);
+  }
+  let best: string | null = null;
+  let bestN = 0;
+  for (const [region, n] of counts) {
+    if (n > bestN) {
+      best = region;
+      bestN = n;
+    }
+  }
+  return best;
+}
+
+export async function queryIndexRanges(
+  conn: ConnectionManager,
+  tableRef: string,
+  indexName: string
+): Promise<TopologyRange[]> {
+  const [db, table] = tableRef.includes('.') ? tableRef.split('.') : ['app', tableRef];
+  const attempts = [
+    `SHOW RANGES FROM INDEX ${db}.public.${table}@${indexName} WITH DETAILS`,
+    `SHOW RANGES FROM INDEX ${db}.${table}@${indexName} WITH DETAILS`,
+  ];
+  for (const sql of attempts) {
+    try {
+      const r = await conn.query(sql);
+      if (r.rows.length === 0) continue;
+      return mapRangeRows(r.rows as Array<Record<string, unknown>>);
+    } catch {
+      /* next */
+    }
+  }
+  return [];
+}
+
+/** Replica counts for RBR customers, keyed by home crdb_region then placement region. */
+export async function queryCustomerHomeCounts(
+  conn: ConnectionManager,
+  nodes: TopologyNode[]
+): Promise<Record<string, Record<string, RegionZoneCounts>>> {
+  const ranges = await queryIndexRanges(conn, 'app.customers', 'customers_pkey');
+  const byHome: Record<string, TopologyRange[]> = { 'us-east': [], 'us-west': [], 'eu-west': [] };
+  for (const range of ranges) {
+    const pretty = range.startPretty ?? '';
+    if (!isRbrDataRange(pretty)) continue;
+    const home = majorityHomeRegion(range, nodes);
+    if (home && byHome[home]) {
+      byHome[home].push(range);
+    }
+  }
+  return {
+    'us-east': replicaCountsByRegionAndZone(nodes, byHome['us-east']),
+    'us-west': replicaCountsByRegionAndZone(nodes, byHome['us-west']),
+    'eu-west': replicaCountsByRegionAndZone(nodes, byHome['eu-west']),
+  };
+}
+
+function shortLocality(raw: string): string {
+  const u = raw.toUpperCase();
+  if (u.includes('REGIONAL BY ROW')) return 'RBR';
+  if (u.includes('REGIONAL BY TABLE')) return 'RBT';
+  if (u.includes('GLOBAL')) return 'Global';
+  return '—';
+}
+
+export async function queryDemoTableLocality(
+  conn: ConnectionManager
+): Promise<Record<string, string>> {
+  const out: Record<string, string> = {};
+  const attempts = [
+    'SELECT table_name, locality FROM [SHOW TABLES FROM app]',
+    `SELECT name AS table_name, locality FROM crdb_internal.tables WHERE database_name = 'app'`,
+  ];
+  for (const sql of attempts) {
+    try {
+      const r = await conn.query(sql);
+      for (const row of r.rows as Array<Record<string, unknown>>) {
+        const name = String(row.table_name ?? row.name ?? '');
+        if (!name) continue;
+        out[`app.${name}`] = shortLocality(String(row.locality ?? ''));
+      }
+      if (Object.keys(out).length > 0) return out;
+    } catch {
+      /* next */
     }
   }
   return out;

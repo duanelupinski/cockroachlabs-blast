@@ -1,25 +1,26 @@
 {
-  "id": "gdpr-super-region",
-  "title": "Super regions: GLOBAL, REGIONAL BY TABLE, REGIONAL BY ROW",
-  "cluster": { "nodes": 6, "insecure": true },
+  "id": "gdpr-super-region-3region",
+  "title": "Table locality: GLOBAL, REGIONAL BY TABLE, REGIONAL BY ROW",
+  "cluster": { "nodes": 9, "insecure": true },
   "focusTable": "app.orders",
   "superRegions": [
-    { "name": "US", "regions": ["us-east"] },
+    { "name": "US", "regions": ["us-east", "us-west"] },
     { "name": "EU", "regions": ["eu-west"] }
   ],
   "steps": [
     {
       "id": "init-db",
-      "title": "Create a two-region database + US and EU super regions",
-      "narration": "Register us-east and eu-west. Super region US is {us-east}; EU is {eu-west}. That is what later strips cross-ocean replicas.",
+      "title": "Create a three-region database + US and EU super regions",
+      "narration": "Register us-east, us-west, and eu-west. Super region US is {us-east, us-west}; EU is {eu-west}. That is what later strips cross-ocean replicas.",
       "sql": [
         "CREATE DATABASE IF NOT EXISTS app;",
         "ALTER DATABASE app SET PRIMARY REGION \"us-east\";",
+        "ALTER DATABASE app ADD REGION IF NOT EXISTS \"us-west\";",
         "ALTER DATABASE app ADD REGION IF NOT EXISTS \"eu-west\";",
         "ALTER DATABASE app SURVIVE ZONE FAILURE;",
         "SET enable_super_regions = 'on';",
         "ALTER ROLE ALL SET enable_super_regions = on;",
-        "ALTER DATABASE app ADD SUPER REGION \"US\" VALUES \"us-east\";",
+        "ALTER DATABASE app ADD SUPER REGION \"US\" VALUES \"us-east\", \"us-west\";",
         "ALTER DATABASE app ADD SUPER REGION \"EU\" VALUES \"eu-west\";",
         "SHOW SUPER REGIONS FROM DATABASE app;"
       ]
@@ -27,7 +28,7 @@
     {
       "id": "seed-global",
       "title": "Create prices, orders, and customers as GLOBAL",
-      "narration": "All three tables start GLOBAL: replicas sit in both us-east and eu-west. Twelve ranges each for a dense before picture.",
+      "narration": "All three tables start GLOBAL: replicas sit in us-east, us-west, and eu-west. Twelve ranges each for a dense before picture.",
       "focusTable": "app.orders",
       "sql": [
         "USE app;",
@@ -50,8 +51,8 @@
     },
     {
       "id": "show-before",
-      "title": "Before — all three tables in both regions",
-      "narration": "GLOBAL before picture. orders, customers, and prices each have replicas in us-east and eu-west.",
+      "title": "Before — all three tables in all three regions",
+      "narration": "GLOBAL before picture. orders, customers, and prices each have replicas in us-east, us-west, and eu-west.",
       "focusTable": "app.orders",
       "snapshot": "before",
       "sql": [
@@ -61,8 +62,8 @@
     },
     {
       "id": "show-orders-before",
-      "title": "Before RBT — orders replicas in US and EU",
-      "narration": "orders is still GLOBAL. Replicas should list both us-east and eu-west. Next step confines the whole table to EU.",
+      "title": "Before RBT — orders replicas in US-East, US-West, and EU",
+      "narration": "orders is still GLOBAL. Replicas should list us-east, us-west, and eu-west. Next step confines the whole table to EU.",
       "focusTable": "app.orders",
       "sql": [
         "WITH ranges AS (SELECT range_id, replicas, replica_localities FROM [SHOW RANGES FROM TABLE app.orders WITH DETAILS]), pairs AS (SELECT r.range_id, split_part(split_part(r.replica_localities[i], 'zone=', 2), ',', 1) AS zone FROM ranges r, generate_series(1, COALESCE(array_length(r.replicas, 1), 0)) AS i) SELECT r.range_id, ARRAY(SELECT p.zone FROM pairs p WHERE p.range_id = r.range_id) AS replicas FROM ranges r ORDER BY r.range_id;",
@@ -72,7 +73,7 @@
     {
       "id": "pin-orders-rbt",
       "title": "Regional by table — confine orders to EU",
-      "narration": "Home the whole table in eu-west. Super region EU drops every us-east replica — not only voters.",
+      "narration": "Home the whole table in eu-west. Super region EU drops every us-east and us-west replica — not only voters.",
       "focusTable": "app.orders",
       "sql": [
         "SET enable_super_regions = 'on';",
@@ -83,7 +84,7 @@
     {
       "id": "show-orders-after",
       "title": "After RBT — orders replicas in EU only",
-      "narration": "orders should show eu-west only. us-east should be empty for this table.",
+      "narration": "orders should show eu-west only. us-east and us-west should be empty for this table.",
       "focusTable": "app.orders",
       "sql": [
         "WITH ranges AS (SELECT range_id, replicas, replica_localities FROM [SHOW RANGES FROM TABLE app.orders WITH DETAILS]), pairs AS (SELECT r.range_id, split_part(split_part(r.replica_localities[i], 'zone=', 2), ',', 1) AS zone FROM ranges r, generate_series(1, COALESCE(array_length(r.replicas, 1), 0)) AS i) SELECT r.range_id, ARRAY(SELECT p.zone FROM pairs p WHERE p.range_id = r.range_id) AS replicas FROM ranges r ORDER BY r.range_id;",
@@ -92,8 +93,8 @@
     },
     {
       "id": "show-customers-before",
-      "title": "Before RBR — customers still in both regions",
-      "narration": "customers is still GLOBAL. Pinning orders did not move this table. Replicas remain in us-east and eu-west.",
+      "title": "Before RBR — customers still in all three regions",
+      "narration": "customers is still GLOBAL. Pinning orders did not move this table. Replicas remain in us-east, us-west, and eu-west.",
       "focusTable": "app.customers",
       "sql": [
         "WITH ranges AS (SELECT range_id, replicas, replica_localities FROM [SHOW RANGES FROM TABLE app.customers WITH DETAILS]), pairs AS (SELECT r.range_id, split_part(split_part(r.replica_localities[i], 'zone=', 2), ',', 1) AS zone FROM ranges r, generate_series(1, COALESCE(array_length(r.replicas, 1), 0)) AS i) SELECT r.range_id, ARRAY(SELECT p.zone FROM pairs p WHERE p.range_id = r.range_id) AS replicas FROM ranges r ORDER BY r.range_id;",
@@ -102,22 +103,22 @@
     },
     {
       "id": "pin-customers-rbr",
-      "title": "Regional by row — home US rows in US, EU rows in EU",
-      "narration": "CA/TX/NY → us-east (super region US). IE/SE/DE → eu-west (super region EU). Each row’s replicas stay on that continent.",
+      "title": "Regional by row — home West, East, and EU rows in their regions",
+      "narration": "CA → us-west. TX/NY → us-east. IE/SE/DE → eu-west. Each row’s replicas stay inside its super region.",
       "focusTable": "app.customers",
       "sql": [
         "SET enable_super_regions = 'on';",
         "SET sql_safe_updates = false;",
         "ALTER TABLE app.customers SET (schema_locked = false);",
         "ALTER TABLE app.customers SET LOCALITY REGIONAL BY ROW;",
-        "UPDATE app.customers SET crdb_region = CASE country WHEN 'CA' THEN 'us-east' WHEN 'TX' THEN 'us-east' WHEN 'NY' THEN 'us-east' WHEN 'IE' THEN 'eu-west' WHEN 'SE' THEN 'eu-west' WHEN 'DE' THEN 'eu-west' END;",
+        "UPDATE app.customers SET crdb_region = CASE country WHEN 'CA' THEN 'us-west' WHEN 'TX' THEN 'us-east' WHEN 'NY' THEN 'us-east' WHEN 'IE' THEN 'eu-west' WHEN 'SE' THEN 'eu-west' WHEN 'DE' THEN 'eu-west' END;",
         "SET sql_safe_updates = true;"
       ]
     },
     {
       "id": "show-customers-after",
-      "title": "After RBR — customers split by super region",
-      "narration": "US-homed ranges: us-east only. EU-homed ranges: eu-west only. No row keeps copies on the other continent.",
+      "title": "After RBR — customers split by home region",
+      "narration": "West-homed ranges: us-west only. East-homed ranges: us-east only. EU-homed ranges: eu-west only.",
       "focusTable": "app.customers",
       "sql": [
         "WITH ranges AS (SELECT range_id, replicas, replica_localities FROM [SHOW RANGES FROM TABLE app.customers WITH DETAILS]), pairs AS (SELECT r.range_id, split_part(split_part(r.replica_localities[i], 'zone=', 2), ',', 1) AS zone FROM ranges r, generate_series(1, COALESCE(array_length(r.replicas, 1), 0)) AS i) SELECT r.range_id, ARRAY(SELECT p.zone FROM pairs p WHERE p.range_id = r.range_id) AS replicas FROM ranges r ORDER BY r.range_id;",
@@ -126,8 +127,8 @@
     },
     {
       "id": "show-prices",
-      "title": "Show prices — still GLOBAL in both regions",
-      "narration": "Control: super regions do not confine GLOBAL tables. prices replicas remain in us-east and eu-west.",
+      "title": "Show prices — still GLOBAL in all three regions",
+      "narration": "Control: super regions do not confine GLOBAL tables. prices replicas remain in us-east, us-west, and eu-west.",
       "focusTable": "app.prices",
       "sql": [
         "WITH ranges AS (SELECT range_id, replicas, replica_localities FROM [SHOW RANGES FROM TABLE app.prices WITH DETAILS]), pairs AS (SELECT r.range_id, split_part(split_part(r.replica_localities[i], 'zone=', 2), ',', 1) AS zone FROM ranges r, generate_series(1, COALESCE(array_length(r.replicas, 1), 0)) AS i) SELECT r.range_id, ARRAY(SELECT p.zone FROM pairs p WHERE p.range_id = r.range_id) AS replicas FROM ranges r ORDER BY r.range_id;",

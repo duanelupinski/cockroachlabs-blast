@@ -1,22 +1,27 @@
 {
   "name": "cockroachlabs-blast",
-  "displayName": "CockroachDB Blast",
-  "description": "Local insecure CockroachDB demo presenter: globe, GDPR super-region playbook, DB Console, and cockroach sql",
-  "version": "0.1.0",
+  "displayName": "CockroachDB BLAST (Brief Live Assessment & Showcase Tool)",
+  "description": "Local insecure CockroachDB demo presenter: globe, super-region playbook, HA, zero-downtime upgrade, MCP server, DB Console, and cockroach sql",
+  "version": "0.2.1",
   "publisher": "cockroachlabs",
   "license": "MIT",
   "engines": {
     "vscode": "^1.85.0"
   },
-  "categories": ["Other", "Visualization"],
-  "activationEvents": ["onView:blast.cluster"],
+  "categories": [
+    "Other",
+    "Visualization"
+  ],
+  "activationEvents": [
+    "onView:blast.cluster"
+  ],
   "main": "./dist/extension.js",
   "icon": "media/Logo.png",
   "contributes": {
     "commands": [
       {
         "command": "blast.createCluster",
-        "title": "CockroachDB Blast: Start 9-Node Cluster"
+        "title": "CockroachDB Blast: Start 6-Node Cluster"
       },
       {
         "command": "blast.destroyCluster",
@@ -48,7 +53,7 @@
       "blast": [
         {
           "id": "blast.cluster",
-          "name": "Cluster"
+          "name": "Demo"
         }
       ]
     },
@@ -57,7 +62,11 @@
       "properties": {
         "cockroachBlast.containerEngine": {
           "type": "string",
-          "enum": ["auto", "docker", "podman"],
+          "enum": [
+            "auto",
+            "docker",
+            "podman"
+          ],
           "default": "auto",
           "description": "Local container engine. auto detects Docker then Podman."
         },
@@ -82,7 +91,7 @@
   "scripts": {
     "vscode:prepublish": "npm run build",
     "build": "npm run build:extension && npm run build:webapp",
-    "build:extension": "esbuild ./src/extension.ts --bundle --outfile=dist/extension.js --external:vscode --format=cjs --platform=node",
+    "build:extension": "esbuild ./src/extension.ts --bundle --outfile=dist/extension.js --external:vscode --external:@cursor/sdk --format=cjs --platform=node",
     "build:webapp": "cd webapp && npm run build",
     "watch": "npm run build:extension -- --watch"
   },
@@ -94,6 +103,7 @@
     "typescript": "^5.3.3"
   },
   "dependencies": {
+    "@cursor/sdk": "^1.0.35",
     "pg": "^8.13.0"
   }
 }

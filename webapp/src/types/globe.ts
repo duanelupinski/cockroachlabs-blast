@@ -1,4 +1,4 @@
-export type RegionId = 'us-east' | 'eu-west' | 'eu-central';
+export type RegionId = 'us-east' | 'us-west' | 'eu-west';
 
 export interface RegionConfig {
   id: RegionId;
@@ -16,6 +16,7 @@ export interface ReplicaInfo {
   isVoting: boolean;
   isLeaseholder: boolean;
   votingCount: number;
+  replicaCount: number;
 }
 
 export interface NodeInfo {
@@ -23,6 +24,7 @@ export interface NodeInfo {
   address: string;
   locality: string;
   isLive: boolean;
+  buildTag?: string;
 }
 
 export interface RangeInfo {
@@ -36,20 +38,20 @@ export const GLOBE_RADIUS = 2;
 
 export const REGIONS: RegionConfig[] = [
   { id: 'us-east', label: 'US-East', city: 'Virginia', lat: 37.43, lng: -79.1, color: '#60A5FA', nodes: 3 },
+  { id: 'us-west', label: 'US-West', city: 'Oregon', lat: 45.52, lng: -122.68, color: '#FBBF24', nodes: 3 },
   { id: 'eu-west', label: 'EU-West', city: 'Ireland', lat: 53.14, lng: -7.6, color: '#34D399', nodes: 3 },
-  { id: 'eu-central', label: 'EU-Central', city: 'Frankfurt', lat: 50.11, lng: 8.68, color: '#FBBF24', nodes: 3 },
 ];
 
 export const LATENCIES: Record<string, number> = {
   'us-east:us-east': 2,
-  'us-east:eu-west': 85,
-  'us-east:eu-central': 90,
-  'eu-west:us-east': 85,
+  'us-east:us-west': 42,
+  'us-east:eu-west': 75,
+  'us-west:us-east': 42,
+  'us-west:us-west': 2,
+  'us-west:eu-west': 130,
+  'eu-west:us-east': 75,
+  'eu-west:us-west': 130,
   'eu-west:eu-west': 2,
-  'eu-west:eu-central': 18,
-  'eu-central:us-east': 90,
-  'eu-central:eu-west': 18,
-  'eu-central:eu-central': 2,
 };
 
 export function latLngToVector3(lat: number, lng: number, radius: number = 1): [number, number, number] {
@@ -65,12 +67,11 @@ export function mapRegionName(crdbRegion: string): RegionId {
   const mapping: Record<string, RegionId> = {
     'us-east': 'us-east',
     'us-east1': 'us-east',
+    'us-west': 'us-west',
+    'us-west1': 'us-west',
     'eu-west': 'eu-west',
     'eu-west1': 'eu-west',
     'europe-west1': 'eu-west',
-    'eu-central': 'eu-central',
-    'eu-central1': 'eu-central',
-    'europe-central1': 'eu-central',
   };
   return mapping[crdbRegion] ?? 'us-east';
 }

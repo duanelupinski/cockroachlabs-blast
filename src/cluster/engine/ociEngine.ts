@@ -1,4 +1,4 @@
-import { execFile } from 'child_process';
+import { execFile, spawn, type ChildProcess } from 'child_process';
 import type { ContainerEngine, EngineId, ContainerInfo } from './containerEngine';
 
 export abstract class OciEngine implements ContainerEngine {
@@ -9,6 +9,46 @@ export abstract class OciEngine implements ContainerEngine {
 
   async exec(containerName: string, command: string[], timeoutMs = 120_000): Promise<string> {
     return this.execBinary(['exec', containerName, ...command], timeoutMs);
+  }
+
+  spawnExec(containerName: string, command: string[]): ChildProcess {
+    return spawn(this.binary, ['exec', containerName, ...command], {
+      stdio: ['ignore', 'pipe', 'pipe'],
+    });
+  }
+
+  async stop(containerName: string, timeoutSeconds = 10): Promise<void> {
+    await this.execBinary(['stop', '-t', String(timeoutSeconds), containerName], 30_000);
+  }
+
+  async start(containerName: string): Promise<void> {
+    await this.execBinary(['start', containerName], 30_000);
+  }
+
+  async rm(containerName: string): Promise<void> {
+    await this.execBinary(['rm', '-f', containerName], 15_000);
+  }
+
+  async signal(containerName: string, signal: string): Promise<void> {
+    await this.execBinary(['kill', '-s', signal, containerName], 8_000);
+  }
+
+  async writeContainerFile(containerName: string, destPath: string, contents: string): Promise<void> {
+    await new Promise<void>((resolve, reject) => {
+      const child = spawn(this.binary, ['exec', '-i', containerName, 'tee', destPath], {
+        stdio: ['pipe', 'pipe', 'pipe'],
+      });
+      let stderr = '';
+      child.stderr.on('data', (chunk) => {
+        stderr += String(chunk);
+      });
+      child.on('error', reject);
+      child.on('close', (code) => {
+        if (code === 0) resolve();
+        else reject(new Error(stderr.trim() || `Failed to write ${destPath} (exit ${code})`));
+      });
+      child.stdin.end(contents);
+    });
   }
 
   async ls(filters?: Record<string, string>, all = false): Promise<ContainerInfo[]> {
@@ -38,14 +78,31 @@ export abstract class OciEngine implements ContainerEngine {
     };
   }
 
-  async composeUp(file: string, project: string, env?: Record<string, string>): Promise<string> {
+  async composeUp(
+    file: string,
+    project: string,
+    env?: Record<string, string>,
+    services?: string[],
+    profiles?: string[]
+  ): Promise<string> {
     const composeCmd = await this.detectComposeCommand();
-    return this.execCompose(composeCmd, file, project, ['up', '-d'], env);
+    const args: string[] = [];
+    if (profiles?.length) {
+      for (const profile of profiles) args.push('--profile', profile);
+    }
+    args.push('up', '-d');
+    if (services?.length) args.push(...services);
+    else args.push('--remove-orphans');
+    return this.execCompose(composeCmd, file, project, args, env);
   }
 
   async composeDown(file: string, project: string): Promise<string> {
     const composeCmd = await this.detectComposeCommand();
     return this.execCompose(composeCmd, file, project, ['down', '-v', '--remove-orphans']);
+  }
+
+  async pull(image: string): Promise<void> {
+    await this.execBinary(['pull', image], 300_000);
   }
 
   private composeCommand: string[] | null = null;

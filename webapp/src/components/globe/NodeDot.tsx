@@ -1,6 +1,5 @@
 import { useRef, useEffect } from 'react';
 import { useFrame } from '@react-three/fiber';
-import { Html } from '@react-three/drei';
 import * as THREE from 'three';
 import type { ReplicaInfo } from '../../types/globe';
 
@@ -30,17 +29,7 @@ export function NodeDot({
   const highlightStartRef = useRef<number>(0);
 
   const isLeaseholder = replicas.some((r) => r.isLeaseholder);
-  const isVoting = replicas.some((r) => r.isVoting);
-  const isNonVoting = replicas.length > 0 && !isVoting;
-  const votingCount = replicas.reduce((n, r) => n + (r.votingCount ?? (r.isVoting ? 1 : 0)), 0);
-
-  const badge = isLeaseholder
-    ? { text: votingCount > 0 ? `LH ${votingCount}V` : 'LH', color: '#FFD700', bg: 'rgba(255, 215, 0, 0.15)' }
-    : isVoting
-      ? { text: `${votingCount}V`, color, bg: 'rgba(255, 255, 255, 0.1)' }
-      : isNonVoting
-        ? { text: 'NV', color: '#9CA3AF', bg: 'rgba(255, 255, 255, 0.05)' }
-        : null;
+  const replicaCount = replicas.reduce((n, r) => n + (r.replicaCount ?? r.votingCount ?? 1), 0);
 
   useEffect(() => {
     if (highlighted) {
@@ -95,7 +84,7 @@ export function NodeDot({
       {/* Glow */}
       <mesh>
         <sphereGeometry args={[size * 2, 12, 12]} />
-        <meshBasicMaterial color={dotColor} transparent opacity={isFailed ? 0.03 : 0.08} />
+        <meshBasicMaterial color={dotColor} transparent opacity={0.08} />
       </mesh>
 
       {/* Core */}
@@ -104,66 +93,15 @@ export function NodeDot({
         <meshBasicMaterial
           color={dotColor}
           transparent
-          opacity={isFailed ? 0.15 : isNonVoting ? 0.4 : 0.85}
+          opacity={isFailed ? 0.85 : replicaCount > 0 ? 0.85 : 0.35}
         />
       </mesh>
 
-      {/* Non-voting ring */}
-      {isNonVoting && !isFailed && (
-        <mesh rotation={[Math.PI / 2, 0, 0]}>
-          <ringGeometry args={[size * 1.4, size * 1.7, 16]} />
-          <meshBasicMaterial color={dotColor} transparent opacity={0.25} side={THREE.DoubleSide} />
-        </mesh>
-      )}
-
-      {/* Leaseholder ring */}
-      {isLeaseholder && !isFailed && (
-        <mesh rotation={[Math.PI / 2, 0, 0]}>
-          <ringGeometry args={[size * 1.8, size * 2.2, 24]} />
-          <meshBasicMaterial color={dotColor} transparent opacity={0.5} side={THREE.DoubleSide} />
-        </mesh>
-      )}
-
-      {/* Voting ring */}
-      {isVoting && !isLeaseholder && !isFailed && (
+      {replicaCount > 0 && !isFailed && (
         <mesh rotation={[Math.PI / 2, 0, 0]}>
           <ringGeometry args={[size * 1.3, size * 1.5, 16]} />
           <meshBasicMaterial color={dotColor} transparent opacity={0.3} side={THREE.DoubleSide} />
         </mesh>
-      )}
-
-      {/* Badge label */}
-      {badge && !isFailed && showLabels && (
-        <Html center distanceFactor={6} style={{ pointerEvents: 'none' }}>
-          <div
-            className="text-[7px] font-bold px-1 rounded select-none whitespace-nowrap"
-            style={{
-              color: badge.color,
-              backgroundColor: badge.bg,
-              border: `1px solid ${badge.color}40`,
-              transform: 'translateY(-10px)',
-              textShadow: isLeaseholder ? `0 0 4px ${badge.color}` : 'none',
-            }}
-          >
-            {badge.text}
-          </div>
-        </Html>
-      )}
-
-      {/* Failed indicator */}
-      {isFailed && (
-        <Html center distanceFactor={6} style={{ pointerEvents: 'none' }}>
-          <div
-            className="text-[9px] font-bold select-none"
-            style={{
-              color: '#EF4444',
-              transform: 'translateY(-10px)',
-              textShadow: '0 0 6px rgba(239, 68, 68, 0.8)',
-            }}
-          >
-            ✕
-          </div>
-        </Html>
       )}
     </group>
   );

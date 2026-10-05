@@ -1,0 +1,84 @@
+{
+  "id": "zero-downtime-upgrade",
+  "title": "Zero downtime upgrade",
+  "cluster": { "nodes": 3, "insecure": true },
+  "focusTable": "",
+  "upgrade": { "from": "v25.4.17", "to": "v26.2.7", "region": "us-west" },
+  "steps": [
+    {
+      "id": "health",
+      "title": "Confirm the us-west cluster is healthy on v25.4",
+      "narration": "Three nodes, one per us-west zone, all on the same binary. Under-replicated ranges should be 0 before a rolling upgrade. SQL is already behind HAProxy, so a later restart does not drop the client.",
+      "sql": [
+        "SHOW CLUSTER SETTING version;",
+        "SELECT node_id, address, locality, is_live FROM crdb_internal.gossip_nodes ORDER BY node_id;",
+        "SELECT count(*) AS ranges_below_3_replicas FROM crdb_internal.ranges_no_leases WHERE array_length(replicas, 1) < 3;"
+      ]
+    },
+    {
+      "id": "pause-finalize",
+      "title": "Pause auto-finalization",
+      "narration": "v25.4 can move directly to v26.2. Auto-finalization would lock that in as soon as the last node rejoins. Turning it off leaves a rollback path until you finalize.",
+      "sql": [
+        "SET CLUSTER SETTING cluster.auto_upgrade.enabled = false;",
+        "SHOW CLUSTER SETTING cluster.auto_upgrade.enabled;"
+      ]
+    },
+    {
+      "id": "upgrade-node-1",
+      "title": "Upgrade us-west-1 to v26.2",
+      "narration": "Drain node 1, swap its image to v26.2.7, and start it on the same store. The globe marker turns red while it is down. HAProxy keeps SQL on the other two nodes.",
+      "action": "upgrade-node",
+      "node": 1,
+      "sql": [
+        "-- drain blast-node-1, stop it, start cockroachdb/cockroach:v26.2.7 on the same store",
+        "SET allow_unsafe_internals = true;",
+        "SELECT node_id, tag AS build_tag FROM crdb_internal.kv_node_status ORDER BY node_id;"
+      ]
+    },
+    {
+      "id": "upgrade-node-2",
+      "title": "Upgrade us-west-2 to v26.2",
+      "narration": "Same rolling step for node 2. Nodes 1 and 3 keep serving. The us-west-2 marker goes red, then returns when the new binary has rejoined.",
+      "action": "upgrade-node",
+      "node": 2,
+      "sql": [
+        "-- drain blast-node-2, stop it, start cockroachdb/cockroach:v26.2.7 on the same store",
+        "SET allow_unsafe_internals = true;",
+        "SELECT node_id, tag AS build_tag FROM crdb_internal.kv_node_status ORDER BY node_id;"
+      ]
+    },
+    {
+      "id": "upgrade-node-3",
+      "title": "Upgrade us-west-3 to v26.2",
+      "narration": "Last binary swap. When this node rejoins, every node is on v26.2 and the cluster version is still 25.4 until you finalize.",
+      "action": "upgrade-node",
+      "node": 3,
+      "sql": [
+        "-- drain blast-node-3, stop it, start cockroachdb/cockroach:v26.2.7 on the same store",
+        "SET allow_unsafe_internals = true;",
+        "SELECT node_id, tag AS build_tag FROM crdb_internal.kv_node_status ORDER BY node_id;"
+      ]
+    },
+    {
+      "id": "mixed-version",
+      "title": "Binaries are v26.2; cluster version is still 25.4",
+      "narration": "This is the rollback window. Each node reports the v26.2 build tag, and SHOW CLUSTER SETTING version still returns 25.4. New 26.2 features that need migrations are not on yet.",
+      "sql": [
+        "SET allow_unsafe_internals = true;",
+        "SHOW CLUSTER SETTING version;",
+        "SELECT node_id, tag AS build_tag FROM crdb_internal.kv_node_status ORDER BY node_id;"
+      ]
+    },
+    {
+      "id": "finalize",
+      "title": "Finalize the upgrade to v26.2",
+      "narration": "Finalization runs the 26.2 migrations. allow_unsafe_internals must be on in this session before the version change. After it finishes, the cluster cannot roll back to v25.4. A major-version finalize needs the enterprise license from CockroachDB Blast settings.",
+      "sql": [
+        "SET allow_unsafe_internals = true;",
+        "SET CLUSTER SETTING version = '26.2';",
+        "SHOW CLUSTER SETTING version;"
+      ]
+    }
+  ]
+}

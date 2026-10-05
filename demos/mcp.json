@@ -1,0 +1,27 @@
+{
+  "mcpServers": {
+    "cockroachdb": {
+      "type": "stdio",
+      "command": "docker",
+      "args": [
+        "run",
+        "--rm",
+        "-i",
+        "--network",
+        "blast-cluster_blast-net",
+        "-e",
+        "CRDB_HOST=blast-lb",
+        "-e",
+        "CRDB_PORT=26257",
+        "-e",
+        "CRDB_DATABASE=movr",
+        "-e",
+        "CRDB_USERNAME=root",
+        "-e",
+        "CRDB_SSL_MODE=disable",
+        "mcp/cockroachdb",
+        "--read-only"
+      ]
+    }
+  }
+}

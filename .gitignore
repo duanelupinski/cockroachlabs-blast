@@ -4,3 +4,5 @@ webapp/dist/
 webapp/node_modules/
 *.vsix
 .DS_Store
+.cursor/debug-*.log
+.playwright-cli/

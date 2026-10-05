@@ -1,97 +1,74 @@
-# Local insecure 6-node cluster: 3× us-east, 3× eu-west
-# Never start this with TLS. Demos use --insecure only.
+# Local insecure upgrade cluster: 3× us-west (Oregon), one node per zone.
+# Starts on v25.4. The presenter replaces one node image at a time with v26.2.
+# Named volumes keep each store across that image swap. Always --insecure.
 x-node: &node
-  image: cockroachdb/cockroach:${CRDB_VERSION:-v26.1.5}
   labels:
     - "managed-by=cockroach-blast"
-    - "blast-demo=multi-region"
+    - "blast-demo=upgrade"
   networks:
     - blast-net
   healthcheck:
     test: ["CMD", "curl", "-f", "http://localhost:8080/health"]
     interval: 3s
     timeout: 3s
-    retries: 20
+    retries: 30
+    start_period: 15s
 
 services:
   blast-node-1:
     <<: *node
+    image: cockroachdb/cockroach:${CRDB_VERSION_1:-v25.4.17}
     container_name: blast-node-1
     hostname: blast-node-1
+    volumes:
+      - upgrade-node-1:/cockroach/node1
     command: >
       start --insecure
       --join=blast-node-1:26357,blast-node-2:26357,blast-node-3:26357
       --listen-addr=0.0.0.0:26357 --advertise-addr=blast-node-1:26357
-      --sql-addr=0.0.0.0:26257 --http-addr=0.0.0.0:8080 --store=node1
-      --locality=region=us-east,zone=us-east-1
+      --sql-addr=0.0.0.0:26257 --http-addr=0.0.0.0:8080
+      --store=/cockroach/node1
+      --locality=region=us-west,zone=us-west-1
       --cache=64MiB --max-sql-memory=256MiB
 
   blast-node-2:
     <<: *node
+    image: cockroachdb/cockroach:${CRDB_VERSION_2:-v25.4.17}
     container_name: blast-node-2
     hostname: blast-node-2
+    volumes:
+      - upgrade-node-2:/cockroach/node2
     command: >
       start --insecure
       --join=blast-node-1:26357,blast-node-2:26357,blast-node-3:26357
       --listen-addr=0.0.0.0:26357 --advertise-addr=blast-node-2:26357
-      --sql-addr=0.0.0.0:26257 --http-addr=0.0.0.0:8080 --store=node2
-      --locality=region=us-east,zone=us-east-2
+      --sql-addr=0.0.0.0:26257 --http-addr=0.0.0.0:8080
+      --store=/cockroach/node2
+      --locality=region=us-west,zone=us-west-2
       --cache=64MiB --max-sql-memory=256MiB
 
   blast-node-3:
     <<: *node
+    image: cockroachdb/cockroach:${CRDB_VERSION_3:-v25.4.17}
     container_name: blast-node-3
     hostname: blast-node-3
+    volumes:
+      - upgrade-node-3:/cockroach/node3
     command: >
       start --insecure
       --join=blast-node-1:26357,blast-node-2:26357,blast-node-3:26357
       --listen-addr=0.0.0.0:26357 --advertise-addr=blast-node-3:26357
-      --sql-addr=0.0.0.0:26257 --http-addr=0.0.0.0:8080 --store=node3
-      --locality=region=us-east,zone=us-east-3
-      --cache=64MiB --max-sql-memory=256MiB
-
-  blast-node-4:
-    <<: *node
-    container_name: blast-node-4
-    hostname: blast-node-4
-    command: >
-      start --insecure
-      --join=blast-node-1:26357,blast-node-2:26357,blast-node-3:26357
-      --listen-addr=0.0.0.0:26357 --advertise-addr=blast-node-4:26357
-      --sql-addr=0.0.0.0:26257 --http-addr=0.0.0.0:8080 --store=node4
-      --locality=region=eu-west,zone=eu-west-1
-      --cache=64MiB --max-sql-memory=256MiB
-
-  blast-node-5:
-    <<: *node
-    container_name: blast-node-5
-    hostname: blast-node-5
-    command: >
-      start --insecure
-      --join=blast-node-1:26357,blast-node-2:26357,blast-node-3:26357
-      --listen-addr=0.0.0.0:26357 --advertise-addr=blast-node-5:26357
-      --sql-addr=0.0.0.0:26257 --http-addr=0.0.0.0:8080 --store=node5
-      --locality=region=eu-west,zone=eu-west-2
-      --cache=64MiB --max-sql-memory=256MiB
-
-  blast-node-6:
-    <<: *node
-    container_name: blast-node-6
-    hostname: blast-node-6
-    command: >
-      start --insecure
-      --join=blast-node-1:26357,blast-node-2:26357,blast-node-3:26357
-      --listen-addr=0.0.0.0:26357 --advertise-addr=blast-node-6:26357
-      --sql-addr=0.0.0.0:26257 --http-addr=0.0.0.0:8080 --store=node6
-      --locality=region=eu-west,zone=eu-west-3
+      --sql-addr=0.0.0.0:26257 --http-addr=0.0.0.0:8080
+      --store=/cockroach/node3
+      --locality=region=us-west,zone=us-west-3
       --cache=64MiB --max-sql-memory=256MiB
 
   blast-init:
-    image: cockroachdb/cockroach:${CRDB_VERSION:-v26.1.5}
+    image: cockroachdb/cockroach:${CRDB_VERSION_1:-v25.4.17}
     container_name: blast-init
     labels:
       - "managed-by=cockroach-blast"
-      - "blast-demo=multi-region"
+      - "blast-demo=upgrade"
     entrypoint: ["/bin/sh", "-c"]
     command:
       - |
@@ -101,6 +78,7 @@ services:
           GRANT admin TO root;
           SET CLUSTER SETTING sql.restrict_system_interface.enabled = false;
         "
+    restart: "no"
     depends_on:
       blast-node-1:
         condition: service_healthy
@@ -116,12 +94,12 @@ services:
     container_name: blast-lb
     labels:
       - "managed-by=cockroach-blast"
-      - "blast-demo=multi-region"
+      - "blast-demo=upgrade"
     ports:
       - "26257:26257"
       - "8080:8080"
     volumes:
-      - ./haproxy.cfg:/usr/local/etc/haproxy/haproxy.cfg:ro
+      - ./haproxy-upgrade.cfg:/usr/local/etc/haproxy/haproxy.cfg:ro
     networks:
       - blast-net
     depends_on:
@@ -131,6 +109,37 @@ services:
         condition: service_healthy
       blast-node-3:
         condition: service_healthy
+
+  # Cockroach binary only — never a cluster node. Survives a node image swap.
+  blast-workload:
+    image: cockroachdb/cockroach:v26.2.7
+    container_name: blast-workload
+    hostname: blast-workload
+    labels:
+      - "managed-by=cockroach-blast"
+      - "blast-demo=upgrade"
+    entrypoint: ["/bin/sh", "-c"]
+    command: ["sleep infinity"]
+    networks:
+      - blast-net
+
+  # SQL client only — not a cluster node. Stays up while a node image is swapped.
+  blast-sql:
+    image: cockroachdb/cockroach:v26.2.7
+    container_name: blast-sql
+    hostname: blast-sql
+    labels:
+      - "managed-by=cockroach-blast"
+      - "blast-demo=upgrade"
+    entrypoint: ["/bin/sh", "-c"]
+    command: ["sleep infinity"]
+    networks:
+      - blast-net
+
+volumes:
+  upgrade-node-1:
+  upgrade-node-2:
+  upgrade-node-3:
 
 networks:
   blast-net:

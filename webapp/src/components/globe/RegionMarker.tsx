@@ -3,8 +3,8 @@ import { useFrame } from '@react-three/fiber';
 import { Html } from '@react-three/drei';
 import * as THREE from 'three';
 import { NodeDot } from './NodeDot';
-import { GLOBE_RADIUS, latLngToVector3 } from '../../types/globe';
-import type { RegionConfig, ReplicaInfo } from '../../types/globe';
+import { GLOBE_RADIUS, latLngToVector3, parseLocality } from '../../types/globe';
+import type { NodeInfo, RegionConfig, ReplicaInfo } from '../../types/globe';
 
 function getNodePositions(
   lat: number,
@@ -73,6 +73,165 @@ function RedistributionPulse({
   );
 }
 
+export interface ReplicaTableRow {
+  table: string;
+  type: string;
+  counts: number[];
+}
+
+export interface ReplicaTableData {
+  zones: string[];
+  rows: ReplicaTableRow[];
+}
+
+const CYL_W = 12;
+const CYL_H = 13;
+const CYL_GAP = 1;
+const TRI_W = 62;
+const TRI_H = 46;
+const HA_ZONES = ['us-east-1', 'us-east-2', 'us-east-3'] as const;
+const ZONES_BY_REGION: Record<string, readonly string[]> = {
+  'us-east': HA_ZONES,
+  'us-west': ['us-west-1', 'us-west-2', 'us-west-3'],
+  'eu-west': ['eu-west-1', 'eu-west-2', 'eu-west-3'],
+};
+const TRI_POINTS = [
+  { x: 16, y: 11 },
+  { x: 46, y: 11 },
+  { x: 31, y: 35 },
+] as const;
+
+function NodeCylinderIcon({ color, dimmed }: { color: string; dimmed: boolean }) {
+  return (
+    <svg width={CYL_W} height={CYL_H} viewBox="0 0 10 11" aria-hidden="true" style={{ opacity: dimmed ? 0.45 : 0.9 }}>
+      <ellipse cx="5" cy="2.2" rx="3.6" ry="1.5" fill={color} />
+      <rect x="1.4" y="2.2" width="7.2" height="6.2" fill={color} />
+      <ellipse cx="5" cy="8.4" rx="3.6" ry="1.5" fill={color} />
+      <ellipse cx="5" cy="2.2" rx="3.6" ry="1.5" fill="#fff" fillOpacity="0.22" />
+    </svg>
+  );
+}
+
+function HaNodeCylinders({
+  nodes,
+  color,
+  isFailed,
+  regionId,
+}: {
+  nodes: NodeInfo[];
+  color: string;
+  isFailed: boolean;
+  regionId: string;
+}) {
+  const zones = ZONES_BY_REGION[regionId] ?? HA_ZONES;
+  const byZone = zones.map((zone) =>
+    nodes
+      .filter((n) => parseLocality(n.locality).zone === zone)
+      .sort((a, b) => a.nodeId - b.nodeId)
+  );
+  const live = byZone.map((group) => !isFailed && group.some((n) => n.isLive));
+  const [a, b, c] = TRI_POINTS;
+  const edges: [typeof a, typeof b, boolean][] = [
+    [a, b, live[0] && live[1]],
+    [a, c, live[0] && live[2]],
+    [b, c, live[1] && live[2]],
+  ];
+  const pairHalf = (CYL_W + CYL_GAP) / 2;
+  return (
+    <div className="relative mx-auto mt-0.5" style={{ width: TRI_W, height: TRI_H }}>
+      <svg className="absolute inset-0" width={TRI_W} height={TRI_H} aria-hidden="true">
+        {edges.map(([from, to, on], i) =>
+          on ? (
+            <line
+              key={`az-${i}`}
+              x1={from.x}
+              y1={from.y}
+              x2={to.x}
+              y2={to.y}
+              stroke={color}
+              strokeWidth="1"
+              strokeOpacity="0.55"
+            />
+          ) : null
+        )}
+        {byZone.map((group, i) => {
+          const pt = TRI_POINTS[i];
+          if (!pt || group.length < 2) return null;
+          const azLive = live[i];
+          return (
+            <line
+              key={`pair-${zones[i]}`}
+              x1={pt.x - pairHalf}
+              y1={pt.y}
+              x2={pt.x + pairHalf}
+              y2={pt.y}
+              stroke={azLive ? color : '#EF4444'}
+              strokeWidth="1.5"
+              strokeOpacity={azLive ? 0.9 : 0.45}
+            />
+          );
+        })}
+      </svg>
+      {byZone.map((group, i) => {
+        const pt = TRI_POINTS[i];
+        if (!pt) return null;
+        const pair = group.slice(0, 2);
+        if (pair.length === 0) return null;
+        const offsets = pair.length === 1 ? [0] : [-pairHalf, pairHalf];
+        return (
+          <div key={zones[i]}>
+            {pair.map((node, j) => (
+              <div
+                key={node.nodeId}
+                className="absolute"
+                style={{
+                  left: pt.x - CYL_W / 2 + (offsets[j] ?? 0),
+                  top: pt.y - CYL_H / 2,
+                }}
+              >
+                <NodeCylinderIcon
+                  color={isFailed || !node.isLive ? '#EF4444' : color}
+                  dimmed={isFailed || !node.isLive}
+                />
+              </div>
+            ))}
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
+function replicaTablePlacement(regionId: string): { transform: string; transformOrigin: string } {
+  if (regionId === 'us-west') {
+    return {
+      transform: 'translate(calc(-100% - 72px), calc(-100% - 28px)) scale(0.9)',
+      transformOrigin: 'bottom right',
+    };
+  }
+  if (regionId === 'us-east') {
+    return {
+      transform: 'translate(calc(-100% - 28px), 28px) scale(0.9)',
+      transformOrigin: 'top right',
+    };
+  }
+  return {
+    transform: 'translate(28px, 28px) scale(0.9)',
+    transformOrigin: 'top left',
+  };
+}
+
+function ZoneHeader({ zone }: { zone: string }) {
+  const match = zone.match(/^(.*)-(\d+)$/);
+  if (!match) return <>{zone}</>;
+  return (
+    <>
+      <span className="block">{match[1]}</span>
+      <span className="block">{match[2]}</span>
+    </>
+  );
+}
+
 interface RegionMarkerProps {
   region: RegionConfig;
   isFailed: boolean;
@@ -81,8 +240,12 @@ interface RegionMarkerProps {
   failedNodes: Set<string>;
   highlightedNodes?: Set<string>;
   highlightedLease?: string | null;
+  replicaTable?: ReplicaTableData;
+  haNodes?: NodeInfo[];
   onClick: () => void;
   showLabels?: boolean;
+  showNodeIcons?: boolean;
+  showDots?: boolean;
 }
 
 export function RegionMarker({
@@ -93,8 +256,12 @@ export function RegionMarker({
   failedNodes,
   highlightedNodes,
   highlightedLease,
+  replicaTable,
+  haNodes,
   onClick,
   showLabels = true,
+  showNodeIcons = false,
+  showDots,
 }: RegionMarkerProps) {
   const centerPos = useMemo(
     () => latLngToVector3(region.lat, region.lng, GLOBE_RADIUS + 0.05),
@@ -106,8 +273,7 @@ export function RegionMarker({
     [region.lat, region.lng, region.nodes]
   );
 
-  const votingCount = replicas.filter((r) => r.isVoting).length;
-  const nonVotingCount = replicas.filter((r) => !r.isVoting).length;
+  const replicaCount = replicas.reduce((n, r) => n + (r.replicaCount ?? 1), 0);
   const hasLeaseholder = replicas.some((r) => r.isLeaseholder);
 
   const color = isFailed ? '#EF4444' : region.color;
@@ -122,7 +288,7 @@ export function RegionMarker({
   }, [hasLeaseholder]);
 
   const replicaSignature = useMemo(
-    () => replicas.map((r) => `${r.isVoting}:${r.isLeaseholder}`).join(','),
+    () => replicas.map((r) => `${r.replicaCount}`).join(','),
     [replicas]
   );
   const [pulseCount, setPulseCount] = useState(0);
@@ -133,6 +299,8 @@ export function RegionMarker({
     }
     prevSignature.current = replicaSignature;
   }, [replicaSignature]);
+
+  const renderDots = showDots ?? !showNodeIcons;
 
   const replicasByNode = useMemo(() => {
     const map = new Map<number, ReplicaInfo[]>();
@@ -155,29 +323,30 @@ export function RegionMarker({
         <meshBasicMaterial transparent opacity={0} />
       </mesh>
 
-      {isPrimary && !isFailed && (
+      {isPrimary && !isFailed && !showNodeIcons && (
         <mesh position={centerPos} rotation={[Math.PI / 2, 0, 0]}>
           <ringGeometry args={[0.16, 0.19, 32]} />
           <meshBasicMaterial color={color} transparent opacity={0.5} side={THREE.DoubleSide} />
         </mesh>
       )}
 
-      {nodePositions.map((pos, i) => {
-        const nodeKey = `${region.id}:${i}`;
-        return (
-          <NodeDot
-            key={i}
-            position={pos}
-            color={color}
-            isFailed={isFailed || failedNodes.has(nodeKey)}
-            replicas={replicasByNode.get(i) ?? []}
-            nodeIndex={i}
-            showLabels={showLabels}
-            highlighted={highlightedNodes?.has(nodeKey) ?? false}
-            highlightedAsLease={highlightedLease === nodeKey}
-          />
-        );
-      })}
+      {renderDots &&
+        nodePositions.map((pos, i) => {
+          const nodeKey = `${region.id}:${i}`;
+          return (
+            <NodeDot
+              key={i}
+              position={pos}
+              color={color}
+              isFailed={isFailed || failedNodes.has(nodeKey)}
+              replicas={replicasByNode.get(i) ?? []}
+              nodeIndex={i}
+              showLabels={showLabels}
+              highlighted={highlightedNodes?.has(nodeKey) ?? false}
+              highlightedAsLease={highlightedLease === nodeKey}
+            />
+          );
+        })}
 
       <Html
         position={[centerPos[0], centerPos[1] + 0.2, centerPos[2]]}
@@ -196,30 +365,67 @@ export function RegionMarker({
           <div className="text-[8px] text-white/40 font-mono">
             {region.city} &middot; {region.nodes} {region.nodes === 1 ? 'node' : 'nodes'}
           </div>
-          {replicas.length > 0 && showLabels && (
-            <div className="flex items-center justify-center gap-1 mt-0.5">
-              {votingCount > 0 && (
-                <span className="text-[7px] px-1 rounded bg-white/10 text-white/60">
-                  {votingCount}V
-                </span>
-              )}
-              {nonVotingCount > 0 && (
-                <span className="text-[7px] px-1 rounded bg-white/5 text-white/40">
-                  {nonVotingCount}NV
-                </span>
-              )}
-              {hasLeaseholder && (
-                <span
-                  className="text-[7px] px-1 rounded font-bold"
-                  style={{ backgroundColor: color + '30', color }}
-                >
-                  LH
-                </span>
-              )}
-            </div>
+          {showNodeIcons && (
+            <HaNodeCylinders
+              nodes={haNodes ?? []}
+              color={color}
+              isFailed={isFailed}
+              regionId={region.id}
+            />
           )}
         </div>
       </Html>
+
+      {replicaTable && (
+        <Html
+          position={[centerPos[0], centerPos[1] + 0.2, centerPos[2]]}
+          distanceFactor={6}
+          style={{ pointerEvents: 'none' }}
+        >
+          <div
+            className={`select-none ${isFailed ? 'opacity-30' : ''}`}
+            style={replicaTablePlacement(region.id)}
+          >
+            <div
+              className="text-left rounded px-1.5 py-1 border"
+              style={{
+                borderColor: color + '55',
+                backgroundColor: 'rgba(6, 9, 16, 0.9)',
+              }}
+            >
+              <div className="text-[7px] font-bold tracking-wide mb-1" style={{ color }}>
+                Replica Count
+              </div>
+              <table className="text-[7px] font-mono text-white/80 border-collapse">
+                <thead>
+                  <tr className="text-white/40">
+                    <th className="pr-1.5 pb-0.5 text-left font-normal align-bottom">Table</th>
+                    <th className="pr-1.5 pb-0.5 text-left font-normal align-bottom">Type</th>
+                    {replicaTable.zones.map((z) => (
+                      <th key={z} className="px-0.5 pb-0.5 text-right font-normal leading-tight">
+                        <ZoneHeader zone={z} />
+                      </th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody>
+                  {replicaTable.rows.map((row) => (
+                    <tr key={row.table}>
+                      <td className="pr-1.5 text-left">{row.table}</td>
+                      <td className="pr-1.5 text-left text-white/45">{row.type}</td>
+                      {row.counts.map((n, i) => (
+                        <td key={replicaTable.zones[i]} className="px-0.5 text-right tabular-nums">
+                          {n}
+                        </td>
+                      ))}
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </Html>
+      )}
     </group>
   );
 }
