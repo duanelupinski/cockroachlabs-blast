@@ -62,8 +62,8 @@
     },
     {
       "id": "show-orders-before",
-      "title": "Before RBT — orders replicas in US-East, US-West, and EU",
-      "narration": "orders is still GLOBAL. Replicas should list us-east, us-west, and eu-west. Next step confines the whole table to EU.",
+      "title": "Before RBT — orders replicas in US-East, US-West, and EU-West",
+      "narration": "orders is still GLOBAL. Replicas should list us-east, us-west, and eu-west. Next step confines the whole table to the US super region.",
       "focusTable": "app.orders",
       "sql": [
         "WITH ranges AS (SELECT range_id, replicas, replica_localities FROM [SHOW RANGES FROM TABLE app.orders WITH DETAILS]), pairs AS (SELECT r.range_id, split_part(split_part(r.replica_localities[i], 'zone=', 2), ',', 1) AS zone FROM ranges r, generate_series(1, COALESCE(array_length(r.replicas, 1), 0)) AS i) SELECT r.range_id, ARRAY(SELECT p.zone FROM pairs p WHERE p.range_id = r.range_id) AS replicas FROM ranges r ORDER BY r.range_id;",
@@ -72,19 +72,20 @@
     },
     {
       "id": "pin-orders-rbt",
-      "title": "Regional by table — confine orders to EU",
-      "narration": "Home the whole table in eu-west. Super region EU drops every us-east and us-west replica — not only voters.",
+      "title": "Regional by table — confine orders to the US super region",
+      "narration": "Keep orders inside super region US, which is {us-east, us-west}. Each range gets three replicas in us-east and three in us-west. eu-west copies are removed.",
       "focusTable": "app.orders",
       "sql": [
         "SET enable_super_regions = 'on';",
         "ALTER TABLE app.orders SET (schema_locked = false);",
-        "ALTER TABLE app.orders SET LOCALITY REGIONAL BY TABLE IN \"eu-west\";"
+        "ALTER TABLE app.orders SET LOCALITY REGIONAL BY TABLE IN \"us-east\";",
+        "ALTER TABLE app.orders CONFIGURE ZONE USING num_replicas = 6, num_voters = 3, constraints = '{+region=us-east: 3, +region=us-west: 3}', voter_constraints = '[+region=us-east]', lease_preferences = '[[+region=us-east]]';"
       ]
     },
     {
       "id": "show-orders-after",
-      "title": "After RBT — orders replicas in EU only",
-      "narration": "orders should show eu-west only. us-east and us-west should be empty for this table.",
+      "title": "After RBT — orders replicas in the US super region only",
+      "narration": "orders should show replicas in both us-east and us-west. eu-west should be empty for this table.",
       "focusTable": "app.orders",
       "sql": [
         "WITH ranges AS (SELECT range_id, replicas, replica_localities FROM [SHOW RANGES FROM TABLE app.orders WITH DETAILS]), pairs AS (SELECT r.range_id, split_part(split_part(r.replica_localities[i], 'zone=', 2), ',', 1) AS zone FROM ranges r, generate_series(1, COALESCE(array_length(r.replicas, 1), 0)) AS i) SELECT r.range_id, ARRAY(SELECT p.zone FROM pairs p WHERE p.range_id = r.range_id) AS replicas FROM ranges r ORDER BY r.range_id;",

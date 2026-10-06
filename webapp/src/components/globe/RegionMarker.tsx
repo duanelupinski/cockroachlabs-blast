@@ -205,7 +205,7 @@ function HaNodeCylinders({
 function replicaTablePlacement(regionId: string): { transform: string; transformOrigin: string } {
   if (regionId === 'us-west') {
     return {
-      transform: 'translate(calc(-100% - 72px), calc(-100% - 28px)) scale(0.9)',
+      transform: 'translate(calc(-100% - 32px), calc(-100% - 16px)) scale(0.9)',
       transformOrigin: 'bottom right',
     };
   }

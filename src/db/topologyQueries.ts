@@ -208,83 +208,11 @@ export async function queryDemoTableCounts(
   return byTable;
 }
 
-/** True for a live RBR span (`…/"\x80"`), not a gap (`IndexMin`, `PrefixEnd`) or old id-split (`…/1/100`). */
-function isRbrDataRange(pretty: string): boolean {
-  if (/PrefixEnd|IndexMin|TableMin|IndexMax/i.test(pretty)) return false;
-  return /"[^"]+"/.test(pretty);
-}
-
-function majorityHomeRegion(range: TopologyRange, nodes: TopologyNode[]): string | null {
-  const nodeLoc = new Map<number, string>();
-  for (const n of nodes) {
-    nodeLoc.set(n.nodeId, parseLocalityParts(n.locality).region);
-  }
-  const counts = new Map<string, number>();
-  for (const id of range.replicas) {
-    const region = nodeLoc.get(id);
-    if (!region) continue;
-    counts.set(region, (counts.get(region) ?? 0) + 1);
-  }
-  let best: string | null = null;
-  let bestN = 0;
-  for (const [region, n] of counts) {
-    if (n > bestN) {
-      best = region;
-      bestN = n;
-    }
-  }
-  return best;
-}
-
-export async function queryIndexRanges(
-  conn: ConnectionManager,
-  tableRef: string,
-  indexName: string
-): Promise<TopologyRange[]> {
-  const [db, table] = tableRef.includes('.') ? tableRef.split('.') : ['app', tableRef];
-  const attempts = [
-    `SHOW RANGES FROM INDEX ${db}.public.${table}@${indexName} WITH DETAILS`,
-    `SHOW RANGES FROM INDEX ${db}.${table}@${indexName} WITH DETAILS`,
-  ];
-  for (const sql of attempts) {
-    try {
-      const r = await conn.query(sql);
-      if (r.rows.length === 0) continue;
-      return mapRangeRows(r.rows as Array<Record<string, unknown>>);
-    } catch {
-      /* next */
-    }
-  }
-  return [];
-}
-
-/** Replica counts for RBR customers, keyed by home crdb_region then placement region. */
-export async function queryCustomerHomeCounts(
-  conn: ConnectionManager,
-  nodes: TopologyNode[]
-): Promise<Record<string, Record<string, RegionZoneCounts>>> {
-  const ranges = await queryIndexRanges(conn, 'app.customers', 'customers_pkey');
-  const byHome: Record<string, TopologyRange[]> = { 'us-east': [], 'us-west': [], 'eu-west': [] };
-  for (const range of ranges) {
-    const pretty = range.startPretty ?? '';
-    if (!isRbrDataRange(pretty)) continue;
-    const home = majorityHomeRegion(range, nodes);
-    if (home && byHome[home]) {
-      byHome[home].push(range);
-    }
-  }
-  return {
-    'us-east': replicaCountsByRegionAndZone(nodes, byHome['us-east']),
-    'us-west': replicaCountsByRegionAndZone(nodes, byHome['us-west']),
-    'eu-west': replicaCountsByRegionAndZone(nodes, byHome['eu-west']),
-  };
-}
-
 function shortLocality(raw: string): string {
   const u = raw.toUpperCase();
-  if (u.includes('REGIONAL BY ROW')) return 'RBR';
-  if (u.includes('REGIONAL BY TABLE')) return 'RBT';
-  if (u.includes('GLOBAL')) return 'Global';
+  if (u.includes('REGIONAL BY ROW')) return 'regional by row';
+  if (u.includes('REGIONAL BY TABLE')) return 'regional by table';
+  if (u.includes('GLOBAL')) return 'global';
   return '—';
 }
 

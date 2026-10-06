@@ -70,7 +70,7 @@ export class ClusterTreeProvider implements vscode.TreeDataProvider<BlastTreeIte
       demo === 'ha' ? 'shield' : demo === 'upgrade' ? 'cloud-upload' : demo === 'mcp' ? 'comment-discussion' : 'globe';
     item.iconPath = new vscode.ThemeIcon(icon);
     if (demo === 'table-locality') {
-      item.tooltip = 'US-East, US-West, and EU-West. The previous two-region demo is still listed as Multi-region.';
+      item.tooltip = 'US-East, US-West, and EU-West. Super region US is {us-east, us-west}; EU is {eu-west}.';
     } else if (demo === 'multi-region') {
       item.tooltip = 'Previous version: US-East and EU-West only. Start this cluster to revert.';
     } else if (demo === 'mcp') {

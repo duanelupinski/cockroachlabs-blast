@@ -82,49 +82,25 @@ const ZONES_BY_REGION: Record<string, string[]> = {
   'eu-west': ['eu-west-1', 'eu-west-2', 'eu-west-3'],
 };
 
-function homeHasReplicas(
-  byTableHome: Record<string, Record<string, Record<string, RegionZoneCounts>>> | undefined,
-  home: string
-): boolean {
-  const placed = byTableHome?.['app.customers']?.[home];
-  if (!placed) return false;
-  return Object.values(placed).some((slot) => slot.replicas > 0);
+function localityLabel(raw: string | undefined): string {
+  if (!raw) return '—';
+  if (raw === 'RBR' || /regional by row/i.test(raw)) return 'regional by row';
+  if (raw === 'RBT' || /regional by table/i.test(raw)) return 'regional by table';
+  if (raw === 'Global' || /global/i.test(raw)) return 'global';
+  return raw;
 }
 
 function replicaTableForRegion(
   regionId: string,
   byTable?: Record<string, Record<string, RegionZoneCounts>>,
-  tableLocality?: Record<string, string>,
-  byTableHome?: Record<string, Record<string, Record<string, RegionZoneCounts>>>
+  tableLocality?: Record<string, string>
 ) {
   const zones = ZONES_BY_REGION[regionId] ?? [];
   const rows: { table: string; type: string; counts: number[] }[] = [];
-  if (tableLocality?.['app.customers'] === 'RBR') {
-    const homes = [
-      { table: 'customers US', home: 'us-east' },
-      { table: 'customers West', home: 'us-west' },
-      { table: 'customers EU', home: 'eu-west' },
-    ];
-    for (const home of homes) {
-      if (home.home === 'us-west' && !homeHasReplicas(byTableHome, 'us-west')) continue;
-      rows.push({
-        table: home.table,
-        type: 'RBR',
-        counts: zones.map((z) => byTableHome?.['app.customers']?.[home.home]?.[regionId]?.byZone[z] ?? 0),
-      });
-    }
-  } else {
-    rows.push({
-      table: 'customers',
-      type: tableLocality?.['app.customers'] || '—',
-      counts: zones.map((z) => byTable?.['app.customers']?.[regionId]?.byZone[z] ?? 0),
-    });
-  }
   for (const tbl of GLOBE_TABLES) {
-    if (tbl.id === 'app.customers') continue;
     rows.push({
       table: tbl.label,
-      type: tableLocality?.[tbl.id] || '—',
+      type: localityLabel(tableLocality?.[tbl.id]),
       counts: zones.map((z) => byTable?.[tbl.id]?.[regionId]?.byZone[z] ?? 0),
     });
   }
@@ -348,7 +324,7 @@ export function PresenterView() {
                       from={region}
                       to={next}
                       color={region.color}
-                      showLatency
+                      showLatency={false}
                       rebalancing={!!snapshot && liveReplicas.length > 0}
                     />
                   ))
@@ -368,8 +344,7 @@ export function PresenterView() {
                       : replicaTableForRegion(
                           region.id,
                           topology?.byTable,
-                          topology?.tableLocality,
-                          topology?.byTableHome
+                          topology?.tableLocality
                         )
                   }
                   onClick={() => setFocused(region.id)}

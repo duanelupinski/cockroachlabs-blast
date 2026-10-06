@@ -9,7 +9,6 @@ import {
   replicaCountsByRegion,
   queryDemoTableCounts,
   queryDemoTableLocality,
-  queryCustomerHomeCounts,
   type TopologyNode,
 } from '../db/topologyQueries';
 import { loadPlaybook, type Playbook } from '../playbook/playbookLoader';
@@ -661,16 +660,12 @@ export class PresenterPanel {
     const byRegion = replicaCountsByRegion(nodes, ranges);
     const byTable = await queryDemoTableCounts(this.conn, nodes);
     const tableLocality = await queryDemoTableLocality(this.conn);
-    const byTableHome =
-      tableLocality['app.customers'] === 'RBR'
-        ? { 'app.customers': await queryCustomerHomeCounts(this.conn, nodes) }
-        : {};
     return {
       nodes,
       ranges,
       byRegion,
       byTable,
-      byTableHome,
+      byTableHome: {},
       tableLocality,
       focusTable: this.currentFocusTable,
       superRegions: this.playbook.superRegions,

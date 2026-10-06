@@ -1,25 +1,20 @@
-# CockroachDB Blast
+# CockroachDB BLAST
 
-VS Code and Cursor extension for **local insecure** CockroachDB demos. The playbook shows **US and EU super regions** with three tables: a GLOBAL price list, REGIONAL BY TABLE orders confined to EU, and REGIONAL BY ROW customers domiciled by continent.
+CockroachDB BLAST (Brief Live Assessment & Showcase Tool) is a Cursor and VS Code extension for live CockroachDB demonstrations. Each exercise is a local cluster you start from the sidebar, plus a presenter that walks the story: a globe, a playbook, DB Console, and a real `cockroach sql` terminal.
 
-## What you get
+Everything runs in Docker or Podman on your MacBook. Nodes stay on your machine, always `--insecure`. SQL is on `localhost:26257` and DB Console is on `localhost:8080`. Nothing is started on the host, in CockroachDB Cloud, or on Kubernetes.
 
-- 6-node **multi-region** cluster in **Docker or Podman**: 3× `us-east` (Virginia) and 3× `eu-west` (Ireland), always `--insecure`
-- **HA** demo: 3-node `us-east` cluster (one per AZ), with an option in the presenter to add a second node in each AZ
-- Presenter: 3D globe with table-scoped **replica counts**, super-region playbook, **HA kill/start**, **DB Console** tab
-- Real `cockroach sql --insecure` in an editor-area terminal below the presenter (history, `\dt`, tab completion)
+## Installation
 
-## Prerequisites
+Install these before you build or start a cluster. The container engine must already be running.
 
-Install these **before** you start the cluster. The container engine must already be running.
+| Dependency | Why |
+| --- | --- |
+| [Node.js](https://nodejs.org/) 20+ | Build the extension and the presenter |
+| [Cursor](https://cursor.com/) or [VS Code](https://code.visualstudio.com/) 1.85+ | Host the extension |
+| [Docker Desktop](https://www.docker.com/products/docker-desktop/) or [Podman](https://podman.io/) | Run the clusters |
 
-| Dependency | Why | Notes |
-| --- | --- | --- |
-| [Node.js](https://nodejs.org/) 20+ | Build the extension and webview | `node -v` |
-| [VS Code](https://code.visualstudio.com/) 1.85+ **or** [Cursor](https://cursor.com/) | Host the extension | Either works; same `.vsix` |
-| [Docker Desktop](https://www.docker.com/products/docker-desktop/) **or** [Podman](https://podman.io/) / [Podman Desktop](https://podman-desktop.io/) | Run the 6-node cluster | **Start the app first** so `docker` or `podman` responds |
-
-Confirm the engine is up:
+Confirm the engine responds:
 
 ```bash
 docker info
@@ -27,18 +22,7 @@ docker info
 podman info
 ```
 
-If that fails, open Docker Desktop or Podman Desktop and wait until it is ready. Do not start CockroachDB on the host; the extension only talks to local containers.
-
-Free these host ports (defaults):
-
-- `26257` — SQL
-- `8080` — DB Console
-
-A 6-node demo needs several GB of RAM. Give Docker/Podman at least **6 GB**.
-
-Optional: a CockroachDB **enterprise license** in editor settings if `ADD SUPER REGION` fails on self-hosted.
-
-## Install (Cursor or VS Code)
+Free host ports `26257` (SQL) and `8080` (DB Console). Give Docker or Podman at least **8 GB** of memory so the 9-node exercise has room. Settings → **CockroachDB Blast: Container Engine** can be `auto` (Docker, then Podman), `docker`, or `podman`.
 
 From a clone of this repo:
 
@@ -47,93 +31,85 @@ cd cockroachlabs-blast
 ./build.sh
 ```
 
-That produces `dist/cockroachlabs-blast-0.2.1.vsix`.
+That writes `dist/cockroachlabs-blast-0.2.1.vsix`.
 
-**Cursor**
-
-`cursor` on your PATH is often the **agent CLI**, which does not install extensions (`No Cursor IDE installation found`). Use the IDE binary, or install from the UI.
+**Cursor** — `cursor` on your PATH is often the agent CLI and will not install extensions. Use the IDE binary:
 
 ```bash
-# macOS — Cursor.app CLI (not ~/.local/bin/cursor)
 /Applications/Cursor.app/Contents/Resources/app/bin/cursor --install-extension dist/cockroachlabs-blast-0.2.1.vsix --force
 ```
 
-Then **Developer: Reload Window**. Optional: Command Palette → **Shell Command: Install 'cursor' command in PATH** so a new terminal uses the IDE `cursor`.
-
-**VS Code**
+**VS Code:**
 
 ```bash
 code --install-extension dist/cockroachlabs-blast-0.2.1.vsix --force
 ```
 
-Reload the window the same way.
+Then run **Developer: Reload Window**. You can also install from the Extensions view: `…` → **Install from VSIX…**.
 
-You can also install from the UI: Extensions → `…` → **Install from VSIX…** → pick the file.
+To work from source instead, open this folder, run `./build.sh`, and press **F5**. Use **CRDB Blast** in the Extension Development Host window.
 
-## Run from source (development)
+Only one BLAST cluster runs at a time. If another exercise is up, choose **Destroy cluster** in the sidebar before starting the next one. The same ports and container names are reused.
 
-1. Open this folder in **Cursor** or **VS Code**.
-2. Run `npm install` and `cd webapp && npm install && npm run build && cd ..` (or `./build.sh` without the vsce step).
-3. Press **F5** (Run Extension). A new Extension Development Host window opens.
-4. Use **CRDB Blast** in that host window, not in the window you pressed F5 from.
-
-## Run a demo
-
-1. Confirm Docker or Podman is running (`docker info` or `podman info`).
-2. In Cursor or VS Code, open the **CRDB Blast** icon in the Activity Bar.
-3. If you already had a **9-node / 3-region** or **6-region** cluster, **Destroy cluster** first. The two-region topology cannot reuse those containers.
-4. Click **Start 6-node cluster**. Wait until the notification says the cluster started (first pull of `cockroachdb/cockroach` can take a few minutes).
-5. Click **Open Presenter**. That opens the globe/playbook webview on top and a real `cockroach sql --insecure` terminal below it.
-6. Walk the playbook. **Run step** loads SQL via `\i` into that terminal.
-7. Use the **DB Console** tab for `http://localhost:8080`.
-
-**Table locality:** open **Multi-region - table locality** and start the 9-node cluster (US-East, US-West, EU-West). Each region gets a replica-count box for `orders`, `customers`, and `prices`. The US-West box sits up and to the left of Oregon so it stays clear of the US-East and EU-West boxes. The previous two-region demo is still **Multi-region** — start that 6-node cluster to revert.
-
-**High availability:** in the sidebar, open **High availability and resiliency** and start the 3-node cluster. The presenter lists Kill/Start per node, **Add a node in each AZ** (6 nodes in US-East), **Expand to multi-region** (9 nodes: US-East, US-West, EU-West), and **Scale down to 3 nodes** to remove extras.
-
-**Zero downtime upgrade:** open **Zero downtime upgrade** and start the 3-node cluster. It comes up on CockroachDB v25.4 in `us-west` (one node per zone). The presenter playbook pauses auto-finalization, then rolls each node to v26.2. The globe marker for that node turns red while it is down; HAProxy keeps SQL on the other two. Finalize once all three binaries are on v26.2. A major-version finalize needs `cockroachBlast.enterpriseLicense` in settings.
-
-Playbook story (previous two-region **Multi-region** demo):
-
-1. Two regions + super regions **US** = `{us-east}` and **EU** = `{eu-west}`
-2. `prices`, `orders`, and `customers` start **GLOBAL** (12 ranges each, replicas in both regions)
-3. **Before** — replica regions for all three tables (US and EU)
-4. **REGIONAL BY TABLE** on `orders` in `eu-west` — before: both regions; after: EU only
-5. **REGIONAL BY ROW** on `customers` — before: still both regions; after: CA/TX/NY in US, IE/SE/DE in EU
-6. `prices` stays GLOBAL on both continents
-
-SQL output is replica locations only (`range_id` + regions, plus a per-region count). No leaseholders or voter/non-voter columns.
-
-Command Palette equivalents:
-
-- `CockroachDB Blast: Start 6-Node Cluster`
-- `CockroachDB Blast: Open Presenter`
-- `CockroachDB Blast: Open SQL Terminal`
-- `CockroachDB Blast: Destroy Cluster`
-
-Engine preference: Settings → **CockroachDB Blast: Container Engine** (`auto`, `docker`, or `podman`). `auto` prefers Docker, then Podman.
-
-## Super regions license
-
-If `ALTER DATABASE … ADD SUPER REGION` errors on license, set **user** settings (not a file in this repo):
+Super regions and a major-version finalize need an enterprise license. Set these in user settings (do not commit them):
 
 - `cockroachBlast.enterpriseLicense`
 - `cockroachBlast.cluster.organization`
 
-Then start or restart the cluster so those settings apply.
+Restart the cluster after you set them.
 
-## Tear down
+## Demos
 
-From the sidebar: **Destroy cluster**.
+Open the **CRDB Blast** icon in the Activity Bar. Under the exercise you want, start the cluster, wait for the notification, then **Open Presenter**. The presenter opens above a `cockroach sql --insecure` terminal. **Run step** sends that step’s SQL into the terminal. The **DB Console** tab is `http://localhost:8080`.
 
-Or:
+### Multi-region — table locality
 
-```bash
-docker compose -f deployments/docker-compose.yml -p blast-cluster down -v
-# or
-podman compose -f deployments/docker-compose.yml -p blast-cluster down -v
-```
+A 9-node cluster: three nodes in US-East (Virginia), three in US-West (Oregon), and three in EU-West (Ireland). The globe shows a replica-count box on each region for `prices`, `orders`, and `customers`. Super region **US** is `{us-east, us-west}`. Super region **EU** is `{eu-west}`.
 
-## Project rules
+Suggested steps:
 
-Clusters stay local (Docker/Podman), insecure, with SQL on `26257` and DB Console on `8080`. See `.cursor/rules/`.
+1. Start the **9-node cluster** and open the presenter.
+2. Run **Create a three-region database**. That registers the three regions and the two super regions.
+3. Run **Create prices, orders, and customers as GLOBAL**. Each table’s replicas show up in all three regions.
+4. Run **Before — all three tables** and look at the three replica boxes together.
+5. Run **Regional by table — confine orders to the US super region**. `orders` keeps three replicas in US-East and three in US-West. The EU-West box goes to zero for that table. `customers` and `prices` stay global.
+6. Run **Regional by row** for `customers`. The customers row stays a single line and shows how many replicas sit in each region, the same way the other tables do.
+7. Run **Show prices**. `prices` is still global, with replicas in all three regions.
+
+### High availability and resiliency
+
+A 3-node US-East cluster, one node in each availability zone. The presenter lists every node with Kill and Start, and can add capacity without leaving the demo.
+
+Suggested steps:
+
+1. Start the **3-node cluster** and open the presenter. You should see one live node in each US-East zone.
+2. **Kill** one node. The cluster stays up on the other two. **Start** that node again and wait until it is live.
+3. Choose **Add a node in each AZ**. The cluster grows to six nodes, two per zone. Kill any one node and the others keep serving.
+4. Choose **Expand to multi-region (9 nodes)** to add US-West and EU-West. Kill a node in any region and confirm the cluster stays up.
+5. Choose **Scale down to 3 nodes** to return to the original US-East trio.
+
+### Zero downtime upgrade
+
+A 3-node US-West cluster that starts on CockroachDB v25.4 and rolls, one node at a time, to v26.2. SQL stays on HAProxy, so the client keeps working while a node is down. The globe marker for that node turns red until it rejoins.
+
+Suggested steps:
+
+1. Start the **3-node cluster** and open the presenter. Do not change the version picker; this exercise pins v25.4 and v26.2 itself.
+2. Run **Confirm the us-west cluster is healthy**. Under-replicated ranges should be 0.
+3. Run **Pause auto-finalization** so the cluster does not finalize the moment the last node is on v26.2.
+4. Run the three **Upgrade us-west-N** steps in order. Each node drains, restarts on v26.2, and comes back while the other two serve SQL.
+5. Run **Binaries are v26.2; cluster version is still 25.4**. This is the rollback window.
+6. Run **Finalize the upgrade to v26.2**. This needs the enterprise license in settings. After it finishes, the cluster cannot roll back to v25.4.
+
+### MCP server
+
+A 3-node cluster with the MovR ride-sharing workload and the CockroachDB MCP server. The presenter chart plots workload throughput while you drop an index, ask the agent what is missing, and put the index back.
+
+Suggested steps:
+
+1. Start the **3-node cluster** and open the presenter.
+2. Run **Load the MovR demo database**.
+3. Run **Run the MovR workload** and wait until the chart settles on a steady line. Leave the workload running for the rest of the exercise.
+4. Run **Drop the vehicle index on rides**. Throughput should fall.
+5. Run **Ask the MCP server which index is missing**. The agent should name the dropped rides index.
+6. Run **Put the rides vehicle index back**. Throughput should climb while MovR is still running.
