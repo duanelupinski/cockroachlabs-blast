@@ -2,7 +2,7 @@
 
 CockroachDB BLAST (Brief Live Assessment & Showcase Tool) is a Cursor and VS Code extension for live CockroachDB demonstrations. Each exercise is a local cluster you start from the sidebar, plus a presenter that walks the story: a globe, a playbook, DB Console, and a real `cockroach sql` terminal.
 
-Everything runs in Docker or Podman on your MacBook. Nodes stay on your machine, always `--insecure`. SQL is on `localhost:26257` and DB Console is on `localhost:8080`. Nothing is started on the host, in CockroachDB Cloud, or on Kubernetes.
+Everything runs in Docker or Podman on your client. Nodes stay on your machine, always `--insecure`. SQL is on `localhost:26257` and DB Console is on `localhost:8080`.
 
 ## Installation
 
@@ -51,12 +51,6 @@ To work from source instead, open this folder, run `./build.sh`, and press **F5*
 
 Only one BLAST cluster runs at a time. If another exercise is up, choose **Destroy cluster** in the sidebar before starting the next one. The same ports and container names are reused.
 
-Super regions and a major-version finalize need an enterprise license. Set these in user settings (do not commit them):
-
-- `cockroachBlast.enterpriseLicense`
-- `cockroachBlast.cluster.organization`
-
-Restart the cluster after you set them.
 
 ## Demos
 
