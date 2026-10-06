@@ -4,7 +4,7 @@ import type { ContainerEngine } from './engine';
 import { createEngine, type EngineSetting } from './engine';
 
 export type ClusterState = 'stopped' | 'starting' | 'running' | 'stopping';
-export type DemoId = 'multi-region' | 'table-locality' | 'ha' | 'upgrade' | 'mcp';
+export type DemoId = 'ha' | 'upgrade' | 'table-locality' | 'mcp';
 
 /** Rolling upgrade: v25.4 Regular release → v26.2 Regular release. */
 export const UPGRADE_SOURCE_VERSION = 'v25.4.17';
@@ -24,7 +24,6 @@ export interface ClusterInfo {
 const PROJECT = 'blast-cluster';
 const MANAGED_LABEL = 'managed-by=cockroach-blast';
 const HA_DEMO_LABEL = 'blast-demo=ha';
-const MR_DEMO_LABEL = 'blast-demo=multi-region';
 const TABLE_LOCALITY_DEMO_LABEL = 'blast-demo=table-locality';
 const UPGRADE_DEMO_LABEL = 'blast-demo=upgrade';
 const MCP_DEMO_LABEL = 'blast-demo=mcp';
@@ -41,22 +40,20 @@ const HA_MULTI_REGION_NODES = [
 const HA_EXTRA_NODES = [...HA_SCALE_OUT_NODES, ...HA_MULTI_REGION_NODES];
 const HA_CORE_NODES = ['blast-node-1', 'blast-node-2', 'blast-node-3'];
 const NODE_COUNT: Record<DemoId, number> = {
-  'multi-region': 6,
-  'table-locality': 9,
   ha: 3,
   upgrade: 3,
+  'table-locality': 9,
   mcp: 3,
 };
 
 const COMPOSE_FILE: Record<DemoId, string> = {
-  'multi-region': 'docker-compose.yml',
-  'table-locality': 'docker-compose-table-locality.yml',
   ha: 'docker-compose-ha.yml',
   upgrade: 'docker-compose-upgrade.yml',
+  'table-locality': 'docker-compose-table-locality.yml',
   mcp: 'docker-compose-mcp.yml',
 };
 
-const DEMO_ORDER: DemoId[] = ['table-locality', 'multi-region', 'ha', 'upgrade', 'mcp'];
+const DEMO_ORDER: DemoId[] = ['ha', 'upgrade', 'table-locality', 'mcp'];
 
 export function extractContainerName(address: string): string {
   return address.split(':')[0] ?? address;
@@ -64,7 +61,7 @@ export function extractContainerName(address: string): string {
 
 export class ClusterManager {
   private state: ClusterState = 'stopped';
-  private activeDemo: DemoId = 'multi-region';
+  private activeDemo: DemoId = 'ha';
   private version: string;
   private readonly engine: ContainerEngine;
   private readonly extensionPath: string;
@@ -146,9 +143,6 @@ export class ClusterManager {
       const localityNodes = (await this.engine.ls({ label: TABLE_LOCALITY_DEMO_LABEL }, true)).filter((c) =>
         c.name.startsWith('blast-node-')
       );
-      const mrNodes = (await this.engine.ls({ label: MR_DEMO_LABEL }, true)).filter((c) =>
-        c.name.startsWith('blast-node-')
-      );
       let nodes = haNodes;
       if (upgradeNodes.length > 0) {
         this.activeDemo = 'upgrade';
@@ -161,15 +155,12 @@ export class ClusterManager {
       } else if (localityNodes.length > 0) {
         this.activeDemo = 'table-locality';
         nodes = localityNodes;
-      } else if (mrNodes.length > 0) {
-        this.activeDemo = 'multi-region';
-        nodes = mrNodes;
       } else {
         nodes = (await this.engine.ls({ label: MANAGED_LABEL }, true)).filter((c) =>
           c.name.startsWith('blast-node-')
         );
-        if (nodes.some((c) => /blast-node-[456]$/.test(c.name))) {
-          this.activeDemo = 'multi-region';
+        if (nodes.some((c) => /blast-node-([7-9]|1[0-2])$/.test(c.name))) {
+          this.activeDemo = 'table-locality';
         } else if (nodes.length > 0) {
           this.activeDemo = 'ha';
         }
@@ -181,7 +172,7 @@ export class ClusterManager {
     this.fire();
   }
 
-  async createCluster(demo: DemoId = 'multi-region'): Promise<void> {
+  async createCluster(demo: DemoId = 'ha'): Promise<void> {
     if ((this.state === 'running' || this.state === 'starting') && this.activeDemo === demo) {
       vscode.window.showInformationMessage('A Blast cluster is already running or starting.');
       return;
@@ -224,9 +215,7 @@ export class ClusterManager {
             ? `3-node us-west cluster started on ${UPGRADE_SOURCE_VERSION} (${this.engine.displayName}).`
             : demo === 'table-locality'
               ? `9-node table-locality cluster started (${this.engine.displayName}, ${this.version}).`
-              : demo === 'mcp'
-                ? `3-node MCP demo cluster started (${this.engine.displayName}, ${this.version}).`
-                : `6-node multi-region insecure CockroachDB cluster started (${this.engine.displayName}, ${this.version}).`;
+              : `3-node MCP demo cluster started (${this.engine.displayName}, ${this.version}).`;
       vscode.window.showInformationMessage(label);
     } catch (err: any) {
       this.state = 'stopped';

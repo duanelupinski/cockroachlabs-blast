@@ -125,8 +125,7 @@ export class PresenterPanel {
         steps: [],
       };
     }
-    if (demo === 'mcp') return loadPlaybook(this.context.extensionPath, 'mcp-server.json');
-    return loadPlaybook(this.context.extensionPath);
+    return loadPlaybook(this.context.extensionPath, 'mcp-server.json');
   }
 
   private gossipIdForContainer(nodeNumber: number): number {

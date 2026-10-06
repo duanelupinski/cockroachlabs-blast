@@ -21,7 +21,7 @@
     "commands": [
       {
         "command": "blast.createCluster",
-        "title": "CockroachDB Blast: Start 6-Node Cluster"
+        "title": "CockroachDB Blast: Start Cluster"
       },
       {
         "command": "blast.destroyCluster",

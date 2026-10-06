@@ -16,7 +16,7 @@ import {
 } from '../types/globe';
 import { onMessage, postMessage } from '../hooks/useVsCode';
 
-type DemoKind = 'multi-region' | 'table-locality' | 'ha' | 'upgrade' | 'mcp';
+type DemoKind = 'ha' | 'upgrade' | 'table-locality' | 'mcp';
 
 interface PlaybookStep {
   id: string;
@@ -49,8 +49,7 @@ function waitingCopy(demo: DemoKind): string {
   if (demo === 'ha') return 'No cluster running — start the 3-node HA cluster to place nodes';
   if (demo === 'mcp') return 'No cluster running — start the 3-node MCP demo cluster';
   if (demo === 'upgrade') return 'No cluster running — start the 3-node us-west cluster to place nodes';
-  if (demo === 'table-locality') return 'No cluster running — start the 9-node cluster to place nodes';
-  return 'No cluster running — start the 6-node cluster to place nodes';
+  return 'No cluster running — start the 9-node cluster to place nodes';
 }
 
 interface RegionZoneCounts {
@@ -153,7 +152,7 @@ function failedNodeKeys(nodes: NodeInfo[]): Set<string> {
 
 export function PresenterView() {
   const [tab, setTab] = useState<'globe' | 'console'>('globe');
-  const [demo, setDemo] = useState<DemoKind>('multi-region');
+  const [demo, setDemo] = useState<DemoKind>('ha');
   const [playbook, setPlaybook] = useState<Playbook | null>(null);
   const [stepIndex, setStepIndex] = useState(0);
   const [topology, setTopology] = useState<TopologyPayload | null>(null);
@@ -176,7 +175,6 @@ export function PresenterView() {
         case 'init':
           if (
             msg.demo === 'ha' ||
-            msg.demo === 'multi-region' ||
             msg.demo === 'table-locality' ||
             msg.demo === 'upgrade' ||
             msg.demo === 'mcp'
@@ -324,7 +322,6 @@ export function PresenterView() {
                       from={region}
                       to={next}
                       color={region.color}
-                      showLatency={false}
                       rebalancing={!!snapshot && liveReplicas.length > 0}
                     />
                   ))

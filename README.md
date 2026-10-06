@@ -56,20 +56,6 @@ Only one BLAST cluster runs at a time. If another exercise is up, choose **Destr
 
 Open the **CRDB Blast** icon in the Activity Bar. Under the exercise you want, start the cluster, wait for the notification, then **Open Presenter**. The presenter opens above a `cockroach sql --insecure` terminal. **Run step** sends that step’s SQL into the terminal. The **DB Console** tab is `http://localhost:8080`.
 
-### Multi-region — table locality
-
-A 9-node cluster: three nodes in US-East (Virginia), three in US-West (Oregon), and three in EU-West (Ireland). The globe shows a replica-count box on each region for `prices`, `orders`, and `customers`. Super region **US** is `{us-east, us-west}`. Super region **EU** is `{eu-west}`.
-
-Suggested steps:
-
-1. Start the **9-node cluster** and open the presenter.
-2. Run **Create a three-region database**. That registers the three regions and the two super regions.
-3. Run **Create prices, orders, and customers as GLOBAL**. Each table’s replicas show up in all three regions.
-4. Run **Before — all three tables** and look at the three replica boxes together.
-5. Run **Regional by table — confine orders to the US super region**. `orders` keeps three replicas in US-East and three in US-West. The EU-West box goes to zero for that table. `customers` and `prices` stay global.
-6. Run **Regional by row** for `customers`. The customers row stays a single line and shows how many replicas sit in each region, the same way the other tables do.
-7. Run **Show prices**. `prices` is still global, with replicas in all three regions.
-
 ### High availability and resiliency
 
 A 3-node US-East cluster, one node in each availability zone. The presenter lists every node with Kill and Start, and can add capacity without leaving the demo.
@@ -94,6 +80,20 @@ Suggested steps:
 4. Run the three **Upgrade us-west-N** steps in order. Each node drains, restarts on v26.2, and comes back while the other two serve SQL.
 5. Run **Binaries are v26.2; cluster version is still 25.4**. This is the rollback window.
 6. Run **Finalize the upgrade to v26.2**. This needs the enterprise license in settings. After it finishes, the cluster cannot roll back to v25.4.
+
+### Multi-region — table locality
+
+A 9-node cluster: three nodes in US-East (Virginia), three in US-West (Oregon), and three in EU-West (Ireland). The globe shows a replica-count box on each region for `prices`, `orders`, and `customers`. Super region **US** is `{us-east, us-west}`. Super region **EU** is `{eu-west}`.
+
+Suggested steps:
+
+1. Start the **9-node cluster** and open the presenter.
+2. Run **Create a three-region database**. That registers the three regions and the two super regions.
+3. Run **Create prices, orders, and customers as GLOBAL**. Each table’s replicas show up in all three regions.
+4. Run **Before — all three tables** and look at the three replica boxes together.
+5. Run **Regional by table — confine orders to the US super region**. `orders` keeps three replicas in US-East and three in US-West. The EU-West box goes to zero for that table. `customers` and `prices` stay global.
+6. Run **Regional by row** for `customers`. The customers row stays a single line and shows how many replicas sit in each region, the same way the other tables do.
+7. Run **Show prices**. `prices` is still global, with replicas in all three regions.
 
 ### MCP server
 

@@ -35,7 +35,7 @@ export interface Playbook {
   steps: PlaybookStep[];
 }
 
-export function loadPlaybook(extensionPath: string, fileName = 'gdpr-super-region.json'): Playbook {
+export function loadPlaybook(extensionPath: string, fileName = 'gdpr-super-region-3region.json'): Playbook {
   const file = path.join(extensionPath, 'demos', fileName);
   const raw = fs.readFileSync(file, 'utf-8');
   return JSON.parse(raw) as Playbook;

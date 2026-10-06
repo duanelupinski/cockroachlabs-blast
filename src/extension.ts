@@ -14,23 +14,21 @@ const CRDB_VERSIONS = [
 
 function asDemo(value: unknown): DemoId {
   if (value === 'ha' || value === 'upgrade' || value === 'table-locality' || value === 'mcp') return value;
-  return 'multi-region';
+  return 'ha';
 }
 
 function demoName(demo: DemoId): string {
   if (demo === 'ha') return 'HA';
   if (demo === 'upgrade') return 'zero-downtime upgrade';
   if (demo === 'table-locality') return 'multi-region table locality';
-  if (demo === 'mcp') return 'MCP server';
-  return 'multi-region';
+  return 'MCP server';
 }
 
 function startTitle(demo: DemoId): string {
   if (demo === 'ha') return 'Starting insecure 3-node HA Blast cluster…';
   if (demo === 'upgrade') return 'Starting insecure 3-node us-west cluster on v25.4…';
   if (demo === 'table-locality') return 'Starting insecure 9-node table-locality cluster…';
-  if (demo === 'mcp') return 'Starting insecure 3-node MCP demo cluster…';
-  return 'Starting insecure 6-node Blast cluster…';
+  return 'Starting insecure 3-node MCP demo cluster…';
 }
 
 function startPrompt(demo: DemoId): string {
@@ -39,8 +37,7 @@ function startPrompt(demo: DemoId): string {
   if (demo === 'table-locality') {
     return 'No cluster is running. Start the local 9-node table-locality cluster?';
   }
-  if (demo === 'mcp') return 'No cluster is running. Start the local 3-node MCP demo cluster?';
-  return 'No cluster is running. Start the local 6-node insecure cluster?';
+  return 'No cluster is running. Start the local 3-node MCP demo cluster?';
 }
 
 export function activate(context: vscode.ExtensionContext) {

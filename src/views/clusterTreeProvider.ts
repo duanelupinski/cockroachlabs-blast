@@ -47,14 +47,9 @@ export class ClusterTreeProvider implements vscode.TreeDataProvider<BlastTreeIte
     const info = this.cluster.getInfo();
     const active = info.state !== 'stopped' ? info.demo : null;
     return [
-      this.section(
-        'Multi-region - table locality',
-        'table-locality',
-        active === 'table-locality' || active === null
-      ),
-      this.section('Multi-region', 'multi-region', active === 'multi-region'),
-      this.section('High availability and resiliency', 'ha', active === 'ha'),
+      this.section('High availability and resiliency', 'ha', active === 'ha' || active === null),
       this.section('Zero downtime upgrade', 'upgrade', active === 'upgrade'),
+      this.section('Multi-region - table locality', 'table-locality', active === 'table-locality'),
       this.section('MCP server', 'mcp', active === 'mcp'),
     ];
   }
@@ -71,8 +66,6 @@ export class ClusterTreeProvider implements vscode.TreeDataProvider<BlastTreeIte
     item.iconPath = new vscode.ThemeIcon(icon);
     if (demo === 'table-locality') {
       item.tooltip = 'US-East, US-West, and EU-West. Super region US is {us-east, us-west}; EU is {eu-west}.';
-    } else if (demo === 'multi-region') {
-      item.tooltip = 'Previous version: US-East and EU-West only. Start this cluster to revert.';
     } else if (demo === 'mcp') {
       item.tooltip = '3-node MovR cluster with the CockroachDB MCP server and a throughput chart.';
     }
@@ -109,12 +102,7 @@ export class ClusterTreeProvider implements vscode.TreeDataProvider<BlastTreeIte
     version.iconPath = new vscode.ThemeIcon('versions');
     items.push(version);
 
-    const startLabel =
-      demo === 'table-locality'
-        ? 'Start 9-node cluster'
-        : demo === 'multi-region'
-          ? 'Start 6-node cluster'
-          : 'Start 3-node cluster';
+    const startLabel = demo === 'table-locality' ? 'Start 9-node cluster' : 'Start 3-node cluster';
     const start = new BlastTreeItem(startLabel, 'start', demo, vscode.TreeItemCollapsibleState.None);
     start.command = { command: 'blast.createCluster', title: 'Start cluster', arguments: [demo] };
     start.iconPath = new vscode.ThemeIcon('play');

@@ -1,8 +1,8 @@
 import { useRef, useMemo } from 'react';
 import { useFrame } from '@react-three/fiber';
-import { Html, Line } from '@react-three/drei';
+import { Line } from '@react-three/drei';
 import * as THREE from 'three';
-import { GLOBE_RADIUS, latLngToVector3, LATENCIES } from '../../types/globe';
+import { GLOBE_RADIUS, latLngToVector3 } from '../../types/globe';
 import type { RegionConfig } from '../../types/globe';
 
 function DataPacket({
@@ -79,11 +79,10 @@ interface ReplicationArcProps {
   from: RegionConfig;
   to: RegionConfig;
   color: string;
-  showLatency: boolean;
   rebalancing: boolean;
 }
 
-export function ReplicationArc({ from, to, color, showLatency, rebalancing }: ReplicationArcProps) {
+export function ReplicationArc({ from, to, color, rebalancing }: ReplicationArcProps) {
   const { curvePoints, curvePath } = useMemo(() => {
     const start = new THREE.Vector3(
       ...latLngToVector3(from.lat, from.lng, GLOBE_RADIUS + 0.05)
@@ -104,15 +103,7 @@ export function ReplicationArc({ from, to, color, showLatency, rebalancing }: Re
     return { curvePoints: pts, curvePath: path };
   }, [from, to]);
 
-  const latencyKey = `${from.id}:${to.id}`;
-  const latency = LATENCIES[latencyKey] ?? 0;
-
-  const midPoint = useMemo(() => {
-    const midIdx = Math.floor(curvePoints.length / 2);
-    return curvePoints[midIdx];
-  }, [curvePoints]);
-
-  const packetSpeed = latency > 100 ? 0.05 : latency > 50 ? 0.08 : 0.12;
+  const packetSpeed = 0.08;
 
   const arcColor = rebalancing ? '#fb923c' : color;
   const arcOpacity = rebalancing ? 0.6 : 0.3;
@@ -136,20 +127,6 @@ export function ReplicationArc({ from, to, color, showLatency, rebalancing }: Re
         </>
       )}
 
-      {showLatency && midPoint && (
-        <Html position={midPoint} center distanceFactor={6} style={{ pointerEvents: 'none' }}>
-          <div
-            className="text-[8px] font-mono px-1.5 py-0.5 rounded-full border whitespace-nowrap"
-            style={{
-              color,
-              borderColor: color + '40',
-              backgroundColor: 'rgba(6, 9, 16, 0.8)',
-            }}
-          >
-            {latency}ms
-          </div>
-        </Html>
-      )}
     </group>
   );
 }

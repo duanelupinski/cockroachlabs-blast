@@ -42,18 +42,6 @@ export const REGIONS: RegionConfig[] = [
   { id: 'eu-west', label: 'EU-West', city: 'Ireland', lat: 53.14, lng: -7.6, color: '#34D399', nodes: 3 },
 ];
 
-export const LATENCIES: Record<string, number> = {
-  'us-east:us-east': 2,
-  'us-east:us-west': 42,
-  'us-east:eu-west': 75,
-  'us-west:us-east': 42,
-  'us-west:us-west': 2,
-  'us-west:eu-west': 130,
-  'eu-west:us-east': 75,
-  'eu-west:us-west': 130,
-  'eu-west:eu-west': 2,
-};
-
 export function latLngToVector3(lat: number, lng: number, radius: number = 1): [number, number, number] {
   const phi = (90 - lat) * (Math.PI / 180);
   const theta = (lng + 180) * (Math.PI / 180);
