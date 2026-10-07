@@ -18,6 +18,9 @@ type ItemKind =
   | 'presenter'
   | 'sql';
 
+const playIcon = new vscode.ThemeIcon('play', new vscode.ThemeColor('charts.green'));
+const trashIcon = new vscode.ThemeIcon('trash', new vscode.ThemeColor('charts.red'));
+
 class BlastTreeItem extends vscode.TreeItem {
   constructor(
     label: string,
@@ -116,12 +119,12 @@ export class ClusterTreeProvider implements vscode.TreeDataProvider<BlastTreeIte
     const startLabel = demo === 'table-locality' ? 'Start 9-node cluster' : 'Start 3-node cluster';
     const start = new BlastTreeItem(startLabel, 'start', demo, vscode.TreeItemCollapsibleState.None);
     start.command = { command: 'blast.createCluster', title: 'Start cluster', arguments: [demo] };
-    start.iconPath = new vscode.ThemeIcon('play');
+    start.iconPath = playIcon;
     items.push(start);
 
     const destroy = new BlastTreeItem('Destroy cluster', 'destroy', demo, vscode.TreeItemCollapsibleState.None);
     destroy.command = { command: 'blast.destroyCluster', title: 'Destroy cluster', arguments: [demo] };
-    destroy.iconPath = new vscode.ThemeIcon('trash');
+    destroy.iconPath = trashIcon;
     items.push(destroy);
 
     if (demo === 'mcp') {
@@ -156,7 +159,7 @@ export class ClusterTreeProvider implements vscode.TreeDataProvider<BlastTreeIte
         vscode.TreeItemCollapsibleState.None
       );
       dropMcp.command = { command: 'blast.dropMcpServer', title: 'Drop MCP server container' };
-      dropMcp.iconPath = new vscode.ThemeIcon('trash');
+      dropMcp.iconPath = trashIcon;
       items.push(dropMcp);
     }
 
