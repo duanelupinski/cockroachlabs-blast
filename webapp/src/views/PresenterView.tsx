@@ -3,7 +3,7 @@ import { GlobeScene } from '../components/globe/GlobeScene';
 import { RegionMarker } from '../components/globe/RegionMarker';
 import { ReplicationArc } from '../components/globe/ReplicationArc';
 import { HaControlPanel } from '../components/ha/HaControlPanel';
-import { McpWorkspace } from '../components/mcp/McpWorkspace';
+import { TpccTerminal } from '../components/mcp/TpccTerminal';
 import { MovrWorkloadPanel } from '../components/movr/MovrWorkloadPanel';
 import {
   REGIONS,
@@ -25,9 +25,8 @@ interface PlaybookStep {
   sql: string[];
   focusTable?: string;
   snapshot?: string;
-  action?: 'upgrade-node' | 'movr-init' | 'movr-run' | 'mcp-prompt';
+  action?: 'upgrade-node' | 'tpcc-load' | 'mcp-user' | 'tpcc-run' | 'note';
   node?: number;
-  prompt?: string;
 }
 
 interface SuperRegionDef {
@@ -47,7 +46,7 @@ interface Playbook {
 
 function waitingCopy(demo: DemoKind): string {
   if (demo === 'ha') return 'No cluster running — start the 3-node HA cluster to place nodes';
-  if (demo === 'mcp') return 'No cluster running — start the 3-node MCP demo cluster';
+  if (demo === 'mcp') return 'No cluster running — start the 3-node MCP cluster';
   if (demo === 'upgrade') return 'No cluster running — start the 3-node us-west cluster to place nodes';
   return 'No cluster running — start the 9-node cluster to place nodes';
 }
@@ -288,7 +287,7 @@ export function PresenterView() {
           className={`text-xs px-2 py-1 rounded ${tab === 'globe' ? 'bg-white/10' : 'text-white/50'}`}
           onClick={() => setTab('globe')}
         >
-          {demo === 'mcp' ? 'MCP server' : 'Globe'}
+          {demo === 'mcp' ? 'Workload' : 'Globe'}
         </button>
         <button
           className={`text-xs px-2 py-1 rounded ${tab === 'console' ? 'bg-white/10' : 'text-white/50'}`}
@@ -302,10 +301,10 @@ export function PresenterView() {
         </span>
       </header>
 
-      {(tab === 'globe' || demo === 'mcp') && (
-        <div className={tab === 'globe' ? 'flex-1 flex min-h-0' : 'hidden'}>
+      {tab === 'globe' && (
+        <div className="flex-1 flex min-h-0">
           {demo === 'mcp' ? (
-            <McpWorkspace connected={connected} />
+            <TpccTerminal connected={connected} />
           ) : (
           <div className="flex-1 relative min-w-0">
             <GlobeScene
@@ -385,9 +384,7 @@ export function PresenterView() {
             <div className="px-3 py-2 border-b border-white/10">
               <div className="text-sm font-semibold">{playbook?.title ?? 'Playbook'}</div>
               <div className="text-[10px] text-white/40 mt-1 space-y-0.5">
-                {demo === 'mcp' ? (
-                  <div>3-node MovR cluster. Drop an index, watch throughput, then ask the MCP server.</div>
-                ) : demo === 'upgrade' ? (
+                {demo === 'upgrade' ? (
                   <>
                     <div>
                       <span className="text-amber-300">us-west</span>
@@ -404,6 +401,8 @@ export function PresenterView() {
                       );
                     })}
                   </>
+                ) : demo === 'mcp' ? (
+                  <div>Load TPCC, create mcp_demo, run the workload, then use the workspace chat.</div>
                 ) : (
                   superRegions.map((sr) => (
                     <div key={sr.name}>
@@ -437,9 +436,11 @@ export function PresenterView() {
             )}
             {currentStep && (
               <div className="border-t border-white/10 p-3 space-y-2">
+                {currentStep.sql.length > 0 && (
                 <pre className="text-[10px] font-mono text-emerald-200/80 bg-black/40 p-2 rounded max-h-32 overflow-auto whitespace-pre-wrap">
                   {currentStep.sql.join('\n')}
                 </pre>
+                )}
                 {upgradeMessage && (
                   <div className="text-[10px] text-amber-200/90">{upgradeMessage}</div>
                 )}
@@ -449,13 +450,7 @@ export function PresenterView() {
                     disabled={stepBusy}
                     onClick={() => runStep(stepIndex)}
                   >
-                    {stepBusy
-                      ? 'Working…'
-                      : currentStep.action === 'upgrade-node'
-                        ? 'Upgrade node'
-                        : currentStep.action === 'mcp-prompt'
-                          ? 'Show prompt'
-                          : 'Run step'}
+                    {stepBusy ? 'Working…' : currentStep.action === 'upgrade-node' ? 'Upgrade node' : 'Run step'}
                   </button>
                   <button
                     className="text-xs bg-white/10 hover:bg-white/20 rounded px-2 py-1 disabled:opacity-50"

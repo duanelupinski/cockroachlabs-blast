@@ -11,11 +11,10 @@ import {
   queryDemoTableLocality,
   type TopologyNode,
 } from '../db/topologyQueries';
-import { loadPlaybook, type Playbook } from '../playbook/playbookLoader';
+import { loadMcpClientConfig, loadPlaybook, type Playbook } from '../playbook/playbookLoader';
 import { SqlTerminalManager } from '../terminal/sqlTerminal';
 import { MovrWorkload } from '../workload/movrWorkload';
-import { WorkloadStatsParser } from '../workload/workloadStats';
-import { McpChatSession } from '../mcp/mcpChat';
+import { TpccWorkload } from '../workload/tpccWorkload';
 
 export class PresenterPanel {
   public static currentPanel: PresenterPanel | undefined;
@@ -29,8 +28,7 @@ export class PresenterPanel {
   private livenessOverrides = new Map<number, boolean>();
   private stepBusy = false;
   private readonly movr: MovrWorkload;
-  private readonly workloadStats = new WorkloadStatsParser();
-  private readonly mcpChat: McpChatSession;
+  private readonly tpcc: TpccWorkload;
 
   static createOrShow(
     context: vscode.ExtensionContext,
@@ -70,13 +68,8 @@ export class PresenterPanel {
     this.playbook = this.readPlaybook();
     this.currentFocusTable = this.playbook.focusTable;
     this.movr = new MovrWorkload(cluster.getEngine());
-    this.mcpChat = new McpChatSession(context, cluster.getEngine(), (message) => {
-      this.panel.webview.postMessage(message);
-    });
     this.movr.on('log', (line: string) => {
       this.panel.webview.postMessage({ type: 'movrLog', line });
-      const sample = this.workloadStats.parse(line);
-      if (sample) this.panel.webview.postMessage({ type: 'throughput', ...sample });
     });
     this.movr.on('status', (status: { state: string; message?: string }) => {
       if (status.state === 'ready') {
@@ -84,6 +77,13 @@ export class PresenterPanel {
         return;
       }
       this.panel.webview.postMessage({ type: 'movrStatus', ...status });
+    });
+    this.tpcc = new TpccWorkload(cluster.getEngine());
+    this.tpcc.on('log', (line: string) => {
+      this.panel.webview.postMessage({ type: 'tpccLog', line });
+    });
+    this.tpcc.on('status', (status: { state: string; message?: string }) => {
+      this.panel.webview.postMessage({ type: 'tpccStatus', ...status });
     });
     this.panel.webview.html = getWebviewContent(this.panel.webview, context.extensionUri, 'presenter');
     this.panel.onDidDispose(() => this.dispose(), null, this.disposables);
@@ -125,7 +125,7 @@ export class PresenterPanel {
         steps: [],
       };
     }
-    return loadPlaybook(this.context.extensionPath, 'mcp-server.json');
+    return loadPlaybook(this.context.extensionPath, 'mcp-tpcc.json');
   }
 
   private gossipIdForContainer(nodeNumber: number): number {
@@ -149,6 +149,9 @@ export class PresenterPanel {
         break;
       case 'runAll':
         await this.runAll();
+        break;
+      case 'openSql':
+        await this.sqlTerminal.openSqlShell(true);
         break;
       case 'openExternal':
         if (typeof message.url === 'string') {
@@ -184,15 +187,6 @@ export class PresenterPanel {
         break;
       case 'movrStop':
         this.movr.stop();
-        break;
-      case 'mcpSaveKey':
-        await this.mcpChat.saveKey(typeof message.key === 'string' ? message.key : '');
-        break;
-      case 'mcpClearKey':
-        await this.mcpChat.clearKey();
-        break;
-      case 'mcpSend':
-        await this.mcpChat.send(typeof message.text === 'string' ? message.text : '');
         break;
     }
   }
@@ -390,24 +384,16 @@ export class PresenterPanel {
     let error: string | null = null;
     this.panel.webview.postMessage({ type: 'stepRunning', index });
     try {
-      if (step.action === 'movr-init') {
-        try {
-          await this.runMovrInitStep();
-        } catch (err: any) {
-          error = String(err?.message ?? err);
-          vscode.window.showErrorMessage(error);
-        }
-      } else if (step.action === 'movr-run') {
-        this.workloadStats.reset();
-        this.panel.webview.postMessage({ type: 'throughputReset' });
-        try {
-          await this.handleMovrRun('30m', '8');
-        } catch (err: any) {
-          error = String(err?.message ?? err);
-          vscode.window.showErrorMessage(error);
-        }
-      } else if (step.action === 'mcp-prompt') {
-        this.panel.webview.postMessage({ type: 'mcpSuggest', text: step.prompt ?? '' });
+      if (step.action === 'tpcc-load') {
+        await this.cluster.loadTpccDatabase();
+      } else if (step.action === 'mcp-user') {
+        await this.sqlTerminal.sendSql(step.sql);
+      } else if (step.action === 'tpcc-run') {
+        const container = await this.cluster.workloadHostContainer();
+        this.tpcc.bind(this.cluster.getEngine());
+        this.tpcc.run(container);
+      } else if (step.action === 'note') {
+        /* The workspace chat is the MCP client. This step only shows the prompt. */
       } else if (step.action === 'upgrade-node' && step.node) {
         const nodeId = this.gossipIdForContainer(step.node);
         this.livenessOverrides.set(nodeId, false);
@@ -429,14 +415,6 @@ export class PresenterPanel {
       const runSql = !step.action || step.action === 'upgrade-node';
       if (!error && runSql && step.sql.length > 0) {
         try {
-          if (this.demo() === 'mcp') {
-            await this.execMovrSql(step.sql);
-            if (/drop\s+index/i.test(step.sql.join('\n'))) {
-              this.panel.webview.postMessage({ type: 'indexEvent', kind: 'dropped' });
-            } else if (/create\s+index/i.test(step.sql.join('\n'))) {
-              this.panel.webview.postMessage({ type: 'indexEvent', kind: 'restored' });
-            }
-          }
           await this.sqlTerminal.sendSql(step.sql);
           if (step.snapshot === 'before') {
             void this.captureSnapshot();
@@ -448,66 +426,14 @@ export class PresenterPanel {
           vscode.window.showErrorMessage(error);
         }
       }
+    } catch (err: any) {
+      error = String(err?.message ?? err);
+      vscode.window.showErrorMessage(error);
     } finally {
       this.stepBusy = false;
       this.panel.webview.postMessage({ type: 'stepRan', index, error });
     }
     return !error;
-  }
-
-  private async runMovrInitStep(): Promise<void> {
-    const done = this.waitForMovrReady();
-      try {
-        await this.handleMovrInit();
-      } catch (err) {
-        done.cancel();
-        void done.promise.catch(() => {});
-        throw err;
-      }
-    await done.promise;
-  }
-
-  private waitForMovrReady(): { promise: Promise<void>; cancel: () => void } {
-    let cancel = () => {};
-    const promise = new Promise<void>((resolve, reject) => {
-      const timer = setTimeout(() => {
-        cleanup();
-        reject(new Error('MovR init timed out'));
-      }, 180_000);
-      const onStatus = (status: { state: string; message?: string }) => {
-        if (status.state === 'ready') {
-          cleanup();
-          resolve();
-        } else if (status.state === 'error') {
-          cleanup();
-          reject(new Error(status.message || 'MovR init failed'));
-        }
-      };
-      const cleanup = () => {
-        clearTimeout(timer);
-        this.movr.off('status', onStatus);
-      };
-      cancel = () => {
-        cleanup();
-        reject(new Error('MovR init cancelled'));
-      };
-      this.movr.on('status', onStatus);
-    });
-    return { promise, cancel };
-  }
-
-  private async execMovrSql(statements: string[]): Promise<void> {
-    const host = await this.cluster.firstLiveNodeContainer();
-    const engine = this.cluster.getEngine();
-    for (const statement of statements) {
-      const sql = statement.trim();
-      if (!sql || sql.startsWith('--')) continue;
-      await engine.exec(
-        host,
-        ['cockroach', 'sql', '--insecure', '--database=movr', '-e', sql],
-        180_000
-      );
-    }
   }
 
   /** Super regions need an enterprise license; surface that if the SQL will fail. */
@@ -706,20 +632,30 @@ export class PresenterPanel {
   private pushInit(): void {
     this.playbook = this.readPlaybook();
     this.currentFocusTable = this.playbook.focusTable || this.currentFocusTable;
+    let mcpCommand = '';
+    try {
+      const mcp = loadMcpClientConfig(
+        this.context.extensionPath,
+        vscode.workspace.workspaceFolders?.[0]?.uri.fsPath
+      );
+      mcpCommand = [mcp.command, ...mcp.args].join(' ');
+    } catch {
+      mcpCommand = '';
+    }
     this.panel.webview.postMessage({
       type: 'init',
       demo: this.demo(),
       playbook: this.playbook,
       httpPort: this.cluster.getInfo().httpPort,
+      mcpCommand,
     });
-    void this.mcpChat.pushKeyStatus();
   }
 
   dispose(): void {
     PresenterPanel.currentPanel = undefined;
     if (this.pollTimer) clearInterval(this.pollTimer);
-    void this.mcpChat.dispose();
     this.movr.dispose();
+    this.tpcc.dispose();
     this.panel.dispose();
     while (this.disposables.length) {
       this.disposables.pop()?.dispose();

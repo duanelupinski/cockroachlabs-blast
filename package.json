@@ -38,6 +38,14 @@
       {
         "command": "blast.selectVersion",
         "title": "CockroachDB Blast: Select Version"
+      },
+      {
+        "command": "blast.createMcpServer",
+        "title": "CockroachDB Blast: Create MCP Server Container"
+      },
+      {
+        "command": "blast.dropMcpServer",
+        "title": "CockroachDB Blast: Drop MCP Server Container"
       }
     ],
     "viewsContainers": {
@@ -91,7 +99,7 @@
   "scripts": {
     "vscode:prepublish": "npm run build",
     "build": "npm run build:extension && npm run build:webapp",
-    "build:extension": "esbuild ./src/extension.ts --bundle --outfile=dist/extension.js --external:vscode --external:@cursor/sdk --format=cjs --platform=node",
+    "build:extension": "node scripts/build-extension.cjs",
     "build:webapp": "cd webapp && npm run build",
     "watch": "npm run build:extension -- --watch"
   },
@@ -103,7 +111,6 @@
     "typescript": "^5.3.3"
   },
   "dependencies": {
-    "@cursor/sdk": "^1.0.35",
     "pg": "^8.13.0"
   }
 }

@@ -25,6 +25,8 @@ export interface ContainerEngine {
   stop(containerName: string, timeoutSeconds?: number): Promise<void>;
   start(containerName: string): Promise<void>;
   rm(containerName: string): Promise<void>;
+  inspectFormat(containerName: string, format: string): Promise<string>;
+  logs(containerName: string): Promise<string>;
   signal(containerName: string, signal: string): Promise<void>;
   execTerminalArgs(containerName: string, command: string[]): { shellPath: string; shellArgs: string[] };
   composeUp(
@@ -35,5 +37,12 @@ export interface ContainerEngine {
     profiles?: string[]
   ): Promise<string>;
   composeDown(file: string, project: string): Promise<string>;
+  composeRun(
+    file: string,
+    project: string,
+    service: string,
+    env?: Record<string, string>,
+    timeoutMs?: number
+  ): Promise<string>;
   pull(image: string): Promise<void>;
 }

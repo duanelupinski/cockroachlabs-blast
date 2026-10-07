@@ -28,7 +28,7 @@ function startTitle(demo: DemoId): string {
   if (demo === 'ha') return 'Starting insecure 3-node HA Blast cluster…';
   if (demo === 'upgrade') return 'Starting insecure 3-node us-west cluster on v25.4…';
   if (demo === 'table-locality') return 'Starting insecure 9-node table-locality cluster…';
-  return 'Starting insecure 3-node MCP demo cluster…';
+  return 'Starting insecure 3-node Podman cluster, TPCC, and the MCP server…';
 }
 
 function startPrompt(demo: DemoId): string {
@@ -37,13 +37,13 @@ function startPrompt(demo: DemoId): string {
   if (demo === 'table-locality') {
     return 'No cluster is running. Start the local 9-node table-locality cluster?';
   }
-  return 'No cluster is running. Start the local 3-node MCP demo cluster?';
+  return 'No cluster is running. Start the local 3-node Podman cluster, load TPCC, and start the MCP server?';
 }
 
 export function activate(context: vscode.ExtensionContext) {
   const cluster = new ClusterManager(context.extensionPath);
   const conn = new ConnectionManager();
-  const sqlTerminal = new SqlTerminalManager(cluster, cluster.getEngine());
+  const sqlTerminal = new SqlTerminalManager(cluster);
   const tree = new ClusterTreeProvider(cluster);
 
   void cluster.refreshFromRuntime();
@@ -111,6 +111,38 @@ export function activate(context: vscode.ExtensionContext) {
       PresenterPanel.createOrShow(context, conn, cluster, sqlTerminal);
       if (cluster.getInfo().state === 'running') {
         await sqlTerminal.openSqlShell(true);
+      }
+    }),
+    vscode.commands.registerCommand('blast.createMcpServer', async () => {
+      try {
+        await vscode.window.withProgress(
+          { location: vscode.ProgressLocation.Notification, title: 'Creating MCP server container…' },
+          async () => {
+            await cluster.startMcpServer();
+          }
+        );
+        tree.refresh();
+        vscode.window.showInformationMessage('MCP server container is up.');
+      } catch (err: any) {
+        tree.refresh();
+        vscode.window.showErrorMessage(`Failed to create MCP server container: ${err.message}`);
+      }
+    }),
+    vscode.commands.registerCommand('blast.dropMcpServer', async () => {
+      const ok = await vscode.window.showWarningMessage('Drop the MCP server container?', 'Drop');
+      if (ok !== 'Drop') return;
+      try {
+        const wasRunning = await vscode.window.withProgress(
+          { location: vscode.ProgressLocation.Notification, title: 'Dropping MCP server container…' },
+          async () => cluster.dropMcpServer()
+        );
+        tree.refresh();
+        vscode.window.showInformationMessage(
+          wasRunning ? 'MCP server container dropped.' : 'MCP server container was already stopped.'
+        );
+      } catch (err: any) {
+        tree.refresh();
+        vscode.window.showErrorMessage(`Failed to drop MCP server container: ${err.message}`);
       }
     }),
     vscode.commands.registerCommand('blast.openSqlTerminal', async () => {

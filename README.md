@@ -97,13 +97,6 @@ Suggested steps:
 
 ### MCP server
 
-A 3-node cluster with the MovR ride-sharing workload and the CockroachDB MCP server. The presenter chart plots workload throughput while you drop an index, ask the agent what is missing, and put the index back.
+A 3-node insecure Podman cluster with the TPCC database loaded (1 warehouse). **Start 3-node cluster** also starts the MCP server container from `.cursor/mcp.json` (`blast-mcp-server` on the cluster network, signed in as `mcp_demo`). That name is separate from a global `cockroachdb-mcp-server` entry. Cursor starts this workspace server itself: it execs into `blast-mcp-server` when that container is already up, and otherwise runs it with Podman. From the Mac, SQL is `postgresql://mcp_demo@127.0.0.1:26257/tpcc?sslmode=disable` and DB Console is `http://127.0.0.1:8080`. That user can run `EXPLAIN` and inspect indexes. It cannot create, change, or drop databases or objects.
 
-Suggested steps:
-
-1. Start the **3-node cluster** and open the presenter.
-2. Run **Load the MovR demo database**.
-3. Run **Run the MovR workload** and wait until the chart settles on a steady line. Leave the workload running for the rest of the exercise.
-4. Run **Drop the vehicle index on rides**. Throughput should fall.
-5. Run **Ask the MCP server which index is missing**. The agent should name the dropped rides index.
-6. Run **Put the rides vehicle index back**. Throughput should climb while MovR is still running.
+Set **CockroachDB Blast: Container Engine** to `podman` before starting this demo. `auto` prefers Docker when both binaries exist, and this demo will not start on Docker.

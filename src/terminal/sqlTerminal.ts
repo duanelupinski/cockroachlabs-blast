@@ -1,6 +1,5 @@
 import * as vscode from 'vscode';
 import { ClusterManager } from '../cluster/clusterManager';
-import type { ContainerEngine } from '../cluster/engine';
 
 const TERMINAL_NAME = 'CockroachDB SQL';
 const STEP_FILE = '/tmp/blast-step.sql';
@@ -13,10 +12,7 @@ export class SqlTerminalManager {
   private terminal: vscode.Terminal | undefined;
   private shellReady: Promise<void> = Promise.resolve();
 
-  constructor(
-    private clusterManager: ClusterManager,
-    private engine: ContainerEngine
-  ) {}
+  constructor(private clusterManager: ClusterManager) {}
 
   async openSqlShell(inEditor = true): Promise<vscode.Terminal | undefined> {
     const info = this.clusterManager.getInfo();
@@ -50,8 +46,9 @@ export class SqlTerminalManager {
     }
 
     const sqlArgs = ['cockroach', 'sql', '--insecure', '--set=prompt1=sql> '];
+    if (this.clusterManager.getDemo() === 'mcp') sqlArgs.push('--database=tpcc');
     if (shell.host) sqlArgs.splice(3, 0, `--host=${shell.host}`);
-    const terminalArgs = this.engine.execTerminalArgs(shell.container, sqlArgs);
+    const terminalArgs = this.clusterManager.getEngine().execTerminalArgs(shell.container, sqlArgs);
 
     const location = inEditor
       ? { viewColumn: vscode.ViewColumn.Two, preserveFocus: true }
@@ -104,7 +101,7 @@ export class SqlTerminalManager {
 
     const shell = await this.clusterManager.sqlShell();
     try {
-      await this.engine.writeContainerFile(shell.container, STEP_FILE, block);
+      await this.clusterManager.getEngine().writeContainerFile(shell.container, STEP_FILE, block);
     } catch (err: any) {
       vscode.window.showErrorMessage(`Could not stage playbook SQL: ${err?.message ?? err}`);
       return;

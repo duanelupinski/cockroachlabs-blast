@@ -6,7 +6,17 @@ import {
   type DemoId,
 } from '../cluster/clusterManager';
 
-type ItemKind = 'section' | 'status' | 'version' | 'start' | 'destroy' | 'presenter' | 'sql';
+type ItemKind =
+  | 'section'
+  | 'status'
+  | 'version'
+  | 'start'
+  | 'destroy'
+  | 'mcp-container'
+  | 'mcp-create'
+  | 'mcp-drop'
+  | 'presenter'
+  | 'sql';
 
 class BlastTreeItem extends vscode.TreeItem {
   constructor(
@@ -37,7 +47,7 @@ export class ClusterTreeProvider implements vscode.TreeDataProvider<BlastTreeIte
     return element;
   }
 
-  getChildren(element?: BlastTreeItem): BlastTreeItem[] {
+  async getChildren(element?: BlastTreeItem): Promise<BlastTreeItem[]> {
     if (!element) return this.getRoots();
     if (element.kind === 'section') return this.getDemoItems(element.demo);
     return [];
@@ -67,12 +77,13 @@ export class ClusterTreeProvider implements vscode.TreeDataProvider<BlastTreeIte
     if (demo === 'table-locality') {
       item.tooltip = 'US-East, US-West, and EU-West. Super region US is {us-east, us-west}; EU is {eu-west}.';
     } else if (demo === 'mcp') {
-      item.tooltip = '3-node MovR cluster with the CockroachDB MCP server and a throughput chart.';
+      item.tooltip =
+        '3-node Podman cluster with TPCC. The workspace MCP container is blast-mcp-server from .cursor/mcp.json, signed in as mcp_demo.';
     }
     return item;
   }
 
-  private getDemoItems(demo: DemoId): BlastTreeItem[] {
+  private async getDemoItems(demo: DemoId): Promise<BlastTreeItem[]> {
     const info = this.cluster.getInfo();
     const isActive = info.state !== 'stopped' && info.demo === demo;
     const items: BlastTreeItem[] = [];
@@ -112,6 +123,42 @@ export class ClusterTreeProvider implements vscode.TreeDataProvider<BlastTreeIte
     destroy.command = { command: 'blast.destroyCluster', title: 'Destroy cluster', arguments: [demo] };
     destroy.iconPath = new vscode.ThemeIcon('trash');
     items.push(destroy);
+
+    if (demo === 'mcp') {
+      const running = await this.cluster.mcpContainerRunning();
+      const mcpStatus = new BlastTreeItem(
+        running ? 'MCP container: running' : 'MCP container: stopped',
+        'mcp-container',
+        demo,
+        vscode.TreeItemCollapsibleState.None
+      );
+      mcpStatus.iconPath = new vscode.ThemeIcon(running ? 'vm-running' : 'vm');
+      mcpStatus.tooltip = 'blast-mcp-server from .cursor/mcp.json';
+      items.push(mcpStatus);
+
+      const createMcp = new BlastTreeItem(
+        'Create MCP server container',
+        'mcp-create',
+        demo,
+        vscode.TreeItemCollapsibleState.None
+      );
+      createMcp.command = {
+        command: 'blast.createMcpServer',
+        title: 'Create MCP server container',
+      };
+      createMcp.iconPath = new vscode.ThemeIcon('add');
+      items.push(createMcp);
+
+      const dropMcp = new BlastTreeItem(
+        'Drop MCP server container',
+        'mcp-drop',
+        demo,
+        vscode.TreeItemCollapsibleState.None
+      );
+      dropMcp.command = { command: 'blast.dropMcpServer', title: 'Drop MCP server container' };
+      dropMcp.iconPath = new vscode.ThemeIcon('trash');
+      items.push(dropMcp);
+    }
 
     const presenter = new BlastTreeItem('Open Presenter', 'presenter', demo, vscode.TreeItemCollapsibleState.None);
     presenter.command = { command: 'blast.openPresenter', title: 'Open Presenter', arguments: [demo] };

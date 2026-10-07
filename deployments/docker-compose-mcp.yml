@@ -53,17 +53,43 @@ services:
   blast-init:
     image: cockroachdb/cockroach:${CRDB_VERSION:-v26.1.5}
     container_name: blast-init
+    profiles: ["init"]
     labels:
       - "managed-by=cockroach-blast"
       - "blast-demo=mcp"
     entrypoint: ["/bin/sh", "-c"]
     command:
       - |
+        set -e
         cockroach init --insecure --host=blast-node-1:26357 || true
-        sleep 3
-        cockroach sql --insecure --host=blast-node-1:26357 -e "
+        i=0
+        until cockroach sql --insecure --host=blast-node-1:26257 -e 'SELECT 1'; do
+          i=$$((i+1))
+          if [ "$$i" -ge 30 ]; then
+            echo "SQL did not become ready on blast-node-1:26257" >&2
+            exit 1
+          fi
+          sleep 2
+        done
+        cockroach sql --insecure --host=blast-node-1:26257 -e "
           GRANT admin TO root;
           SET CLUSTER SETTING sql.restrict_system_interface.enabled = false;
+          CREATE USER IF NOT EXISTS mcp_demo;
+          GRANT SYSTEM VIEWACTIVITY TO mcp_demo;
+          GRANT SYSTEM VIEWCLUSTERMETADATA TO mcp_demo;
+          DROP DATABASE IF EXISTS tpcc CASCADE;
+          CREATE DATABASE tpcc;
+        "
+        cockroach workload init tpcc --warehouses=1 --data-loader=INSERT \
+          'postgresql://root@blast-node-1:26257/tpcc?sslmode=disable'
+        cockroach sql --insecure --host=blast-node-1:26257 --database=tpcc -e "
+          GRANT CONNECT ON DATABASE tpcc TO mcp_demo;
+          GRANT USAGE ON SCHEMA public TO mcp_demo;
+          GRANT SELECT ON ALL TABLES IN SCHEMA public TO mcp_demo;
+          ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT SELECT ON TABLES TO mcp_demo;
+          REVOKE INSERT, UPDATE, DELETE, CREATE, DROP ON ALL TABLES IN SCHEMA public FROM mcp_demo;
+          REVOKE CREATE ON SCHEMA public FROM mcp_demo, public;
+          REVOKE CREATE, DROP ON DATABASE tpcc FROM mcp_demo, public;
         "
     depends_on:
       blast-node-1:

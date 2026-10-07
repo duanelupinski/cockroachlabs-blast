@@ -29,6 +29,14 @@ export abstract class OciEngine implements ContainerEngine {
     await this.execBinary(['rm', '-f', containerName], 15_000);
   }
 
+  async inspectFormat(containerName: string, format: string): Promise<string> {
+    return this.execBinary(['inspect', '-f', format, containerName], 8_000);
+  }
+
+  async logs(containerName: string): Promise<string> {
+    return this.execBinary(['logs', '--tail', '80', containerName], 15_000);
+  }
+
   async signal(containerName: string, signal: string): Promise<void> {
     await this.execBinary(['kill', '-s', signal, containerName], 8_000);
   }
@@ -126,17 +134,36 @@ export abstract class OciEngine implements ContainerEngine {
     throw new Error(`Compose not found for ${this.displayName}. Install Docker Compose or Podman Compose.`);
   }
 
+  async composeRun(
+    file: string,
+    project: string,
+    service: string,
+    env?: Record<string, string>,
+    timeoutMs = 300_000
+  ): Promise<string> {
+    const composeCmd = await this.detectComposeCommand();
+    return this.execCompose(
+      composeCmd,
+      file,
+      project,
+      ['--profile', 'init', 'run', '--rm', '--no-deps', service],
+      env,
+      timeoutMs
+    );
+  }
+
   private execCompose(
     composeCmd: string[],
     file: string,
     project: string,
     args: string[],
-    env?: Record<string, string>
+    env?: Record<string, string>,
+    timeoutMs = 180_000
   ): Promise<string> {
     const binary = composeCmd[0];
     const baseArgs = composeCmd.slice(1);
     const fullArgs = [...baseArgs, '-f', file, '-p', project, ...args];
-    return this.execFileAbs(binary, fullArgs, 180_000, env);
+    return this.execFileAbs(binary, fullArgs, timeoutMs, env);
   }
 
   protected execBinary(args: string[], timeoutMs: number): Promise<string> {

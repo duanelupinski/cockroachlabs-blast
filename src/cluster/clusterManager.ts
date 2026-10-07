@@ -1,7 +1,9 @@
+import { execFile } from 'child_process';
 import * as vscode from 'vscode';
 import * as path from 'path';
 import type { ContainerEngine } from './engine';
-import { createEngine, type EngineSetting } from './engine';
+import { createEngine, isBinaryAvailable, PodmanEngine, type EngineSetting } from './engine';
+import { loadMcpContainerLaunch, mcpContainerName } from '../playbook/playbookLoader';
 
 export type ClusterState = 'stopped' | 'starting' | 'running' | 'stopping';
 export type DemoId = 'ha' | 'upgrade' | 'table-locality' | 'mcp';
@@ -63,7 +65,8 @@ export class ClusterManager {
   private state: ClusterState = 'stopped';
   private activeDemo: DemoId = 'ha';
   private version: string;
-  private readonly engine: ContainerEngine;
+  private engine: ContainerEngine;
+  private readonly configuredEngine: ContainerEngine;
   private readonly extensionPath: string;
   private readonly onStateChangedEmitter = new vscode.EventEmitter<ClusterInfo>();
   readonly onStateChanged = this.onStateChangedEmitter.event;
@@ -71,13 +74,45 @@ export class ClusterManager {
   constructor(extensionPath: string, engine?: ContainerEngine) {
     const cfg = vscode.workspace.getConfiguration('cockroachBlast');
     const setting = (cfg.get<string>('containerEngine') ?? 'auto') as EngineSetting;
-    this.engine = engine ?? createEngine(setting);
+    this.configuredEngine = engine ?? createEngine(setting);
+    this.engine = this.configuredEngine;
     this.version = cfg.get<string>('cluster.defaultVersion') ?? 'v26.1.5';
     this.extensionPath = extensionPath;
   }
 
   getEngine(): ContainerEngine {
     return this.engine;
+  }
+
+  /** MCP containers and `.cursor/mcp.json` use Podman, even when auto-detect picks Docker. */
+  private useEngine(demo: DemoId): void {
+    if (demo === 'mcp') this.usePodman();
+    else this.engine = this.configuredEngine;
+  }
+
+  private usePodman(): void {
+    const podman = this.podmanEngine();
+    if (!podman) {
+      const message = 'The MCP demo needs Podman installed.';
+      vscode.window.showErrorMessage(message);
+      throw new Error(message);
+    }
+    this.engine = podman;
+  }
+
+  private podmanEngine(): ContainerEngine | undefined {
+    if (this.engine.id === 'podman') return this.engine;
+    if (this.configuredEngine.id === 'podman') return this.configuredEngine;
+    if (!isBinaryAvailable('podman')) return undefined;
+    return new PodmanEngine();
+  }
+
+  private async listed(engine: ContainerEngine, filters: Record<string, string>) {
+    try {
+      return (await engine.ls(filters, true)).filter((container) => container.name.startsWith('blast-node-'));
+    } catch {
+      return [];
+    }
   }
 
   getDemo(): DemoId {
@@ -131,34 +166,41 @@ export class ClusterManager {
 
   async refreshFromRuntime(): Promise<void> {
     try {
-      const upgradeNodes = (await this.engine.ls({ label: UPGRADE_DEMO_LABEL }, true)).filter((c) =>
-        c.name.startsWith('blast-node-')
-      );
-      const mcpNodes = (await this.engine.ls({ label: MCP_DEMO_LABEL }, true)).filter((c) =>
-        c.name.startsWith('blast-node-')
-      );
-      const haNodes = (await this.engine.ls({ label: HA_DEMO_LABEL }, true)).filter((c) =>
-        c.name.startsWith('blast-node-')
-      );
-      const localityNodes = (await this.engine.ls({ label: TABLE_LOCALITY_DEMO_LABEL }, true)).filter((c) =>
-        c.name.startsWith('blast-node-')
-      );
+      const primary = this.configuredEngine;
+      const upgradeNodes = await this.listed(primary, { label: UPGRADE_DEMO_LABEL });
+      const haNodes = await this.listed(primary, { label: HA_DEMO_LABEL });
+      const localityNodes = await this.listed(primary, { label: TABLE_LOCALITY_DEMO_LABEL });
+      let mcpEngine = primary;
+      let mcpNodes = await this.listed(primary, { label: MCP_DEMO_LABEL });
+      if (mcpNodes.length === 0) {
+        const podman = this.podmanEngine();
+        if (podman && podman !== primary) {
+          const onPodman = await this.listed(podman, { label: MCP_DEMO_LABEL });
+          if (onPodman.length > 0) {
+            mcpEngine = podman;
+            mcpNodes = onPodman;
+          }
+        }
+      }
       let nodes = haNodes;
       if (upgradeNodes.length > 0) {
+        this.engine = primary;
         this.activeDemo = 'upgrade';
         nodes = upgradeNodes;
       } else if (mcpNodes.length > 0) {
+        this.engine = mcpEngine;
         this.activeDemo = 'mcp';
         nodes = mcpNodes;
       } else if (haNodes.length > 0) {
+        this.engine = primary;
         this.activeDemo = 'ha';
       } else if (localityNodes.length > 0) {
+        this.engine = primary;
         this.activeDemo = 'table-locality';
         nodes = localityNodes;
       } else {
-        nodes = (await this.engine.ls({ label: MANAGED_LABEL }, true)).filter((c) =>
-          c.name.startsWith('blast-node-')
-        );
+        this.engine = primary;
+        nodes = await this.listed(primary, { label: MANAGED_LABEL });
         if (nodes.some((c) => /blast-node-([7-9]|1[0-2])$/.test(c.name))) {
           this.activeDemo = 'table-locality';
         } else if (nodes.length > 0) {
@@ -173,13 +215,23 @@ export class ClusterManager {
   }
 
   async createCluster(demo: DemoId = 'ha'): Promise<void> {
+    if (demo === 'mcp' && (this.state === 'stopped' || this.activeDemo === 'mcp')) {
+      this.usePodman();
+    }
     if ((this.state === 'running' || this.state === 'starting') && this.activeDemo === demo) {
+      if (demo === 'mcp' && this.state === 'running') {
+        await this.initializeMcpDemo();
+        await this.startMcpServer();
+        vscode.window.showInformationMessage('MCP cluster is already running. TPCC was initialized again and the MCP server container is up.');
+        return;
+      }
       vscode.window.showInformationMessage('A Blast cluster is already running or starting.');
       return;
     }
     if (this.state === 'running' || this.state === 'starting' || this.state === 'stopping') {
       await this.destroyCluster();
     }
+    this.useEngine(demo);
     this.activeDemo = demo;
     this.state = 'starting';
     this.fire();
@@ -195,16 +247,22 @@ export class ClusterManager {
         await this.engine.pull(`cockroachdb/cockroach:${UPGRADE_SOURCE_VERSION}`);
         await this.engine.pull(`cockroachdb/cockroach:${UPGRADE_TARGET_VERSION}`);
       }
+      if (demo === 'mcp') {
+        await this.engine.pull('mcp/cockroachdb');
+        try {
+          await this.engine.rm('blast-init');
+        } catch {
+          /* no previous init container */
+        }
+      }
       await this.engine.composeUp(this.composePath(demo), PROJECT, this.composeEnv(demo));
+      if (demo === 'mcp') {
+        // cockroach init lives in blast-init. SQL does not answer until that runs.
+        await this.initializeMcpDemo();
+      }
       await this.waitUntilSqlReady();
       if (demo === 'mcp') {
-        try {
-          await this.engine.pull('mcp/cockroachdb');
-        } catch (err: any) {
-          vscode.window.showWarningMessage(
-            `Could not pull mcp/cockroachdb yet. The chat will try again when you send a question. ${err.message}`
-          );
-        }
+        await this.startMcpServer();
       }
       this.state = 'running';
       this.fire();
@@ -215,7 +273,7 @@ export class ClusterManager {
             ? `3-node us-west cluster started on ${UPGRADE_SOURCE_VERSION} (${this.engine.displayName}).`
             : demo === 'table-locality'
               ? `9-node table-locality cluster started (${this.engine.displayName}, ${this.version}).`
-              : `3-node MCP demo cluster started (${this.engine.displayName}, ${this.version}).`;
+              : `3-node Podman cluster started with TPCC (${this.engine.displayName}, ${this.version}). MCP server container is up from .cursor/mcp.json.`;
       vscode.window.showInformationMessage(label);
     } catch (err: any) {
       this.state = 'stopped';
@@ -226,12 +284,19 @@ export class ClusterManager {
   }
 
   async destroyCluster(): Promise<void> {
+    const dropMcp = this.activeDemo === 'mcp';
     if (this.state === 'stopped') {
+      if (dropMcp && (await this.mcpContainerRunning())) {
+        await this.dropWorkspaceMcpServer();
+        vscode.window.showInformationMessage('MCP server container dropped.');
+        return;
+      }
       vscode.window.showInformationMessage('No cluster is running.');
       return;
     }
     this.state = 'stopping';
     this.fire();
+    if (dropMcp) await this.dropWorkspaceMcpServer();
     const demos = [this.activeDemo, ...DEMO_ORDER.filter((demo) => demo !== this.activeDemo)];
     for (const demo of demos) {
       try {
@@ -848,6 +913,180 @@ export class ClusterManager {
         vscode.window.showWarningMessage(`Could not apply enterprise license: ${err.message}`);
       }
     }
+  }
+
+  /** Create mcp_demo, load TPCC, and re-issue grants. Runs on every MCP cluster start. */
+  private async initializeMcpDemo(): Promise<void> {
+    try {
+      await this.engine.rm('blast-init');
+    } catch {
+      /* no previous init container */
+    }
+    try {
+      await this.engine.composeRun(this.composePath('mcp'), PROJECT, 'blast-init', this.composeEnv('mcp'));
+    } catch (err: any) {
+      try {
+        await this.loadTpccOnNode();
+      } catch (fallbackErr: any) {
+        throw new Error(`TPCC did not load. ${err.message ?? err} ${fallbackErr.message ?? fallbackErr}`);
+      }
+    }
+    const count = await this.tpccWarehouseCount();
+    if (count < 1) {
+      throw new Error('TPCC did not load (warehouse count is 0).');
+    }
+  }
+
+  private async tpccWarehouseCount(): Promise<number> {
+    try {
+      const out = await this.engine.exec(
+        this.getActiveNodeContainerName(1),
+        ['cockroach', 'sql', '--insecure', '--format=tsv', '-e', 'SELECT count(*) FROM tpcc.warehouse'],
+        15_000
+      );
+      const lines = out
+        .trim()
+        .split('\n')
+        .map((line) => line.trim())
+        .filter((line) => line.length > 0 && line !== 'count');
+      const count = Number(lines[lines.length - 1]);
+      return Number.isFinite(count) ? count : 0;
+    } catch {
+      return 0;
+    }
+  }
+
+  async runTpccSql(sql: string): Promise<string> {
+    return this.engine.exec(
+      this.getActiveNodeContainerName(1),
+      ['cockroach', 'sql', '--insecure', '--database=tpcc', '-e', sql],
+      120_000
+    );
+  }
+
+  /** Drop and recreate tpcc, then load it with cockroach workload init. */
+  async loadTpccDatabase(): Promise<void> {
+    const name = this.getActiveNodeContainerName(1);
+    await this.engine.exec(
+      name,
+      [
+        'cockroach',
+        'sql',
+        '--insecure',
+        '-e',
+        `GRANT admin TO root;
+         SET CLUSTER SETTING sql.restrict_system_interface.enabled = false;
+         DROP DATABASE IF EXISTS tpcc CASCADE;
+         CREATE DATABASE tpcc;`,
+      ],
+      60_000
+    );
+    await this.engine.exec(
+      name,
+      [
+        'cockroach',
+        'workload',
+        'init',
+        'tpcc',
+        '--warehouses=1',
+        '--data-loader=INSERT',
+        'postgresql://root@127.0.0.1:26257/tpcc?sslmode=disable',
+      ],
+      300_000
+    );
+  }
+
+  /** Read-only index, plan, and session access. No writes, creates, or drops. */
+  async createMcpDemoUser(): Promise<void> {
+    const name = this.getActiveNodeContainerName(1);
+    await this.engine.exec(
+      name,
+      [
+        'cockroach',
+        'sql',
+        '--insecure',
+        '--database=tpcc',
+        '-e',
+        `CREATE USER IF NOT EXISTS mcp_demo;
+         GRANT SYSTEM VIEWACTIVITY TO mcp_demo;
+         GRANT SYSTEM VIEWCLUSTERMETADATA TO mcp_demo;
+         GRANT CONNECT ON DATABASE tpcc TO mcp_demo;
+         GRANT USAGE ON SCHEMA public TO mcp_demo;
+         GRANT SELECT ON ALL TABLES IN SCHEMA public TO mcp_demo;
+         ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT SELECT ON TABLES TO mcp_demo;
+         REVOKE INSERT, UPDATE, DELETE, CREATE, DROP ON ALL TABLES IN SCHEMA public FROM mcp_demo;
+         REVOKE CREATE ON SCHEMA public FROM mcp_demo, public;
+         REVOKE CREATE, DROP ON DATABASE tpcc FROM mcp_demo, public;`,
+      ],
+      60_000
+    );
+  }
+
+  private async loadTpccOnNode(): Promise<void> {
+    await this.loadTpccDatabase();
+    await this.createMcpDemoUser();
+  }
+
+  private async dropWorkspaceMcpServer(): Promise<void> {
+    try {
+      await this.dropMcpServer();
+    } catch (err: any) {
+      vscode.window.showErrorMessage(`Failed to drop MCP server container: ${err.message ?? err}`);
+    }
+  }
+
+  async mcpContainerRunning(): Promise<boolean> {
+    try {
+      const launch = loadMcpContainerLaunch(this.extensionPath, this.workspacePath());
+      const name = mcpContainerName(launch.args);
+      const state = await this.runHost(launch.command, ['inspect', '-f', '{{.State.Running}}', name], 8_000);
+      return state.trim() === 'true';
+    } catch {
+      return false;
+    }
+  }
+
+  /** Detached MCP container from `.cursor/mcp.json`. Leaves a container Cursor already started. */
+  async startMcpServer(): Promise<void> {
+    const launch = loadMcpContainerLaunch(this.extensionPath, this.workspacePath());
+    const name = mcpContainerName(launch.args);
+    if (await this.mcpContainerRunning()) return;
+    try {
+      await this.runHost(launch.command, ['rm', '-f', name], 20_000);
+    } catch {
+      /* no previous container */
+    }
+    await this.runHost(launch.command, launch.args, 120_000);
+    const state = await this.runHost(launch.command, ['inspect', '-f', '{{.State.Running}}', name], 8_000);
+    if (state.trim() !== 'true') {
+      throw new Error(`MCP server container ${name} did not stay running.`);
+    }
+  }
+
+  async dropMcpServer(): Promise<boolean> {
+    const launch = loadMcpContainerLaunch(this.extensionPath, this.workspacePath());
+    const name = mcpContainerName(launch.args);
+    const running = await this.mcpContainerRunning();
+    try {
+      await this.runHost(launch.command, ['rm', '-f', name], 20_000);
+    } catch (err: any) {
+      const message = String(err?.message ?? err);
+      if (!/no such container|does not exist/i.test(message)) throw err;
+    }
+    return running;
+  }
+
+  private workspacePath(): string | undefined {
+    return vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
+  }
+
+  private runHost(command: string, args: string[], timeoutMs: number): Promise<string> {
+    return new Promise((resolve, reject) => {
+      execFile(command, args, { timeout: timeoutMs }, (error, stdout, stderr) => {
+        if (error) reject(new Error((stderr || stdout || error.message).trim()));
+        else resolve((stdout || '').trim());
+      });
+    });
   }
 
   private fire(): void {
